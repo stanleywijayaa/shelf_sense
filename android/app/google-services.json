@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "57599650844",
+    "project_id": "shelfsense-qwert",
+    "storage_bucket": "shelfsense-qwert.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:57599650844:android:e7e8f05a4232fe794e83d9",
+        "android_client_info": {
+          "package_name": "com.example.shelf_sense"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZJWtQASgScwysxQFxP34VEE52bFXPwAg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
