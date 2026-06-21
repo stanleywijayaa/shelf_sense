@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
+import 'add_item_screen.dart';
  
 class ItemDetailScreen extends StatelessWidget {
   final FoodItem item;
@@ -83,6 +84,25 @@ class ItemDetailScreen extends StatelessWidget {
         ),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit item',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AddItemScreen(existingItem: item),
+                ),
+              ).then((_) {
+                // After editing, pop back to the inventory list so it
+                // reflects the change. The detail screen itself was built
+                // as a StatelessWidget holding a snapshot of `item`, so it
+                // can't refresh in place — returning to the list (whose
+                // StreamBuilder is always live) is the simplest fix.
+                if (context.mounted) Navigator.pop(context);
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Delete item',
