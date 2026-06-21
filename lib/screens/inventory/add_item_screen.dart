@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
+import '../../core/utils/risk_utils.dart';
  
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -118,6 +119,15 @@ class _AddItemScreenState extends State<AddItemScreen> {
     setState(() => _isLoading = true);
  
     try {
+      // ── MOCK RISK LOGIC (temporary, for UI testing only) ──────────────
+      // TODO: Replace with real ML prediction once ml_service.dart is built.
+      // Original placeholder before mock logic was introduced:
+      //   riskLevel: 'Unknown',
+      final mockRisk = RiskUtils.calculateMockRisk(
+        purchaseDate: _purchaseDate!,
+        expiryDate: _expiryDate!,
+      );
+ 
       final newItem = FoodItem(
         id: '',  // Firestore generates this automatically
         name: _nameController.text.trim(),
@@ -125,7 +135,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         storageType: _selectedStorage!,
         purchaseDate: _purchaseDate!,
         expiryDate: _expiryDate!,
-        riskLevel: 'Unknown', // Will be filled by ML model later
+        riskLevel: mockRisk, // mock until ML model (Phase 4) is integrated
       );
  
       await _firestoreService.addFoodItem(newItem);
