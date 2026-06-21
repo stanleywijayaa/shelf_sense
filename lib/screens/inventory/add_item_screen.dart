@@ -5,7 +5,17 @@ import '../../services/firestore_service.dart';
 import '../../core/utils/risk_utils.dart';
  
 class AddItemScreen extends StatefulWidget {
-  const AddItemScreen({super.key});
+  /// If provided, the screen opens in "edit mode": fields are pre-filled
+  /// with this item's data, and submitting calls updateFoodItem() instead
+  /// of addFoodItem(). If null, the screen behaves as the original
+  /// "add new item" form.
+  final FoodItem? existingItem;
+ 
+  const AddItemScreen({super.key, this.existingItem});
+ 
+  /// Convenience getter used throughout the State class to check
+  /// whether we're editing an existing item or adding a new one.
+  bool get isEditMode => existingItem != null;
  
   @override
   State<AddItemScreen> createState() => _AddItemScreenState();
@@ -45,6 +55,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
   DateTime? _purchaseDate;
   DateTime? _expiryDate;
  
+  @override
+  void initState() {
+    super.initState();
+ 
+    // If we were given an existing item, pre-fill every field so the
+    // user is editing their current data rather than starting blank.
+    final item = widget.existingItem;
+    if (item != null) {
+      _nameController.text = item.name;
+      _selectedCategory = item.category;
+      _selectedStorage = item.storageType;
+      _purchaseDate = item.purchaseDate;
+      _expiryDate = item.expiryDate;
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -128,32 +154,63 @@ class _AddItemScreenState extends State<AddItemScreen> {
         expiryDate: _expiryDate!,
       );
  
-      final newItem = FoodItem(
-        id: '',  // Firestore generates this automatically
-        name: _nameController.text.trim(),
-        category: _selectedCategory!,
-        storageType: _selectedStorage!,
-        purchaseDate: _purchaseDate!,
-        expiryDate: _expiryDate!,
-        riskLevel: mockRisk, // mock until ML model (Phase 4) is integrated
-      );
- 
-      await _firestoreService.addFoodItem(newItem);
- 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Item added to inventory!'),
-            backgroundColor: Color(0xFF3A7D44),
-          ),
+      if (widget.isEditMode) {
+        // ── EDIT MODE: update the existing Firestore document ───────────
+        // Reuse the original item's id via copyWith() so we don't have
+        // to rebuild every field manually.
+        final updatedItem = widget.existingItem!.copyWith(
+          name: _nameController.text.trim(),
+          category: _selectedCategory!,
+          storageType: _selectedStorage!,
+          purchaseDate: _purchaseDate!,
+          expiryDate: _expiryDate!,
+          riskLevel: mockRisk, // recalculated since dates may have changed
         );
-        Navigator.pop(context); // Go back to inventory list
+ 
+        await _firestoreService.updateFoodItem(updatedItem);
+ 
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item updated!'),
+              backgroundColor: Color(0xFF3A7D44),
+            ),
+          );
+          Navigator.pop(context); // back to item detail / inventory
+        }
+      } else {
+        // ── ADD MODE: create a brand new Firestore document ─────────────
+        final newItem = FoodItem(
+          id: '',  // Firestore generates this automatically
+          name: _nameController.text.trim(),
+          category: _selectedCategory!,
+          storageType: _selectedStorage!,
+          purchaseDate: _purchaseDate!,
+          expiryDate: _expiryDate!,
+          riskLevel: mockRisk, // mock until ML model (Phase 4) is integrated
+        );
+ 
+        await _firestoreService.addFoodItem(newItem);
+ 
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item added to inventory!'),
+              backgroundColor: Color(0xFF3A7D44),
+            ),
+          );
+          Navigator.pop(context); // Go back to inventory list
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add item: $e'),
+            content: Text(
+              widget.isEditMode
+                  ? 'Failed to update item: $e'
+                  : 'Failed to add item: $e',
+            ),
             backgroundColor: const Color(0xFFE63946),
           ),
         );
