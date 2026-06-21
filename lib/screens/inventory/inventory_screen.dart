@@ -3,6 +3,7 @@ import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/food_item_card.dart';
 import 'add_item_screen.dart';
+import 'item_detail_screen.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -145,7 +146,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
               return FoodItemCard(
                 item: item,
                 onTap: () {
-                  // Hook up to item_detail_screen.dart later
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ItemDetailScreen(item: item),
+                    ),
+                  );
                 },
                 onDelete: () => _confirmDelete(item),
               );
