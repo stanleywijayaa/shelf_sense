@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import './screens/inventory/add_item_screen.dart';
 
+/// screens
+import './screens/inventory/add_item_screen.dart';
+import './screens/inventory/inventory_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -20,7 +22,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'My App',
-      home: const AddItemScreen(), 
+      home: const InventoryScreen(), 
     );
   }
 }
