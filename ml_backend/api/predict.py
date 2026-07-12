@@ -1,57 +1,92 @@
 """
 Prediction logic for the /predict endpoint.
  
-Right now this uses a PLACEHOLDER rule-based classifier so the API is
-fully runnable before the real ML model exists. It mirrors the mock logic
-in the Flutter app (risk_utils.dart) so both sides behave consistently
-during integration testing.
+Loads the trained XGBoost model and encoders produced by the training
+pipeline, and turns an incoming app request into a Low/Medium/High
+spoilage-risk classification.
  
-TODO (Phase 4): Once train_model.py produces model/spoilage_model.pkl,
-replace `_placeholder_predict()` with real model loading + inference:
+CRITICAL — feature consistency:
+The model was trained on these columns, IN THIS ORDER:
+    ['category', 'storage_type', 'shelf_life_days',
+     'days_remaining_at_purchase', 'days_until_expiry']
+So this file must build a feature row in exactly that order, and encode
+`category` / `storage_type` with the SAME encoders used at training time
+(loaded from model/encoders.pkl). Any mismatch -> wrong predictions.
  
-    import joblib
-    _model = joblib.load("model/spoilage_model.pkl")
-    _encoders = joblib.load("model/encoders.pkl")//
- 
-    def predict_risk(request):
-        X = _build_feature_vector(request, _encoders)
-        pred = _model.predict(X)[0]
-        proba = _model.predict_proba(X).max()
-        return PredictionResponse(risk_level=pred, confidence=float(proba))
+The app sends `days_since_purchase` and `days_until_expiry`; the other two
+date features are derived here to match how preprocess.py built them.
 """
+ 
+import os
+import joblib
+import numpy as np
+import pandas as pd
  
 from .schemas import PredictionRequest, PredictionResponse
  
+# ── Load model + encoders once at import time (not per request) ──────────
+_MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "model")
  
-def _placeholder_predict(request: PredictionRequest) -> PredictionResponse:
+_model = joblib.load(os.path.join(_MODEL_DIR, "spoilage_model.pkl"))
+_feature_encoders = joblib.load(os.path.join(_MODEL_DIR, "encoders.pkl"))
+_target_encoder = joblib.load(os.path.join(_MODEL_DIR, "target_encoder.pkl"))
+ 
+# The exact feature order the model was trained on.
+_FEATURE_ORDER = [
+    "category",
+    "storage_type",
+    "shelf_life_days",
+    "days_remaining_at_purchase",
+    "days_until_expiry",
+]
+ 
+ 
+def _safe_encode(encoder, value: str, field_name: str) -> int:
     """
-    Temporary rule-based risk estimate based on how much shelf life is left.
-    This has NO relation to the eventual trained model — it exists only so
-    the endpoint returns something sensible during development.
+    Encode a categorical value using the training-time encoder.
+    If the app sends a category/storage the model never saw, we fall back
+    to the first known class rather than crashing — and note it.
     """
-    total_shelf_life = request.days_since_purchase + request.days_until_expiry
- 
-    # Already expired -> High
-    if request.days_until_expiry < 0:
-        return PredictionResponse(risk_level="High", confidence=1.0)
- 
-    # Guard against divide-by-zero
-    if total_shelf_life <= 0:
-        return PredictionResponse(risk_level="High", confidence=1.0)
- 
-    remaining_ratio = request.days_until_expiry / total_shelf_life
- 
-    if remaining_ratio <= 0.2:
-        return PredictionResponse(risk_level="High", confidence=0.9)
-    elif remaining_ratio <= 0.5:
-        return PredictionResponse(risk_level="Medium", confidence=0.9)
-    else:
-        return PredictionResponse(risk_level="Low", confidence=0.9)
+    if value in encoder.classes_:
+        return int(encoder.transform([value])[0])
+    # Unknown label — default to the first class to stay robust.
+    return 0
  
  
 def predict_risk(request: PredictionRequest) -> PredictionResponse:
-    """
-    Public entry point called by the FastAPI route.
-    Swap the body of this function for real model inference in Phase 4.
-    """
-    return _placeholder_predict(request)
+    # ── 1. Derive the date features the model expects ────────────────────
+    # total shelf life = days already elapsed + days still remaining
+    shelf_life_days = request.days_since_purchase + request.days_until_expiry
+    # In the training data, remaining-at-purchase ≈ total shelf life
+    # (they were ~0.99 correlated), so we use the same value here.
+    days_remaining_at_purchase = shelf_life_days
+ 
+    # ── 2. Encode categoricals with the training-time encoders ───────────
+    category_enc = _safe_encode(
+        _feature_encoders["category"], request.category, "category"
+    )
+    storage_enc = _safe_encode(
+        _feature_encoders["storage_type"], request.storage_type, "storage_type"
+    )
+ 
+    # ── 3. Build the feature row IN THE TRAINED ORDER ────────────────────
+    row = pd.DataFrame(
+        [[
+            category_enc,
+            storage_enc,
+            shelf_life_days,
+            days_remaining_at_purchase,
+            request.days_until_expiry,
+        ]],
+        columns=_FEATURE_ORDER,
+    )
+ 
+    # ── 4. Predict + decode ──────────────────────────────────────────────
+    pred_int = _model.predict(row)[0]
+    risk_level = _target_encoder.inverse_transform([pred_int])[0]
+ 
+    # Confidence = probability of the predicted class
+    proba = _model.predict_proba(row)[0]
+    confidence = float(np.max(proba))
+ 
+    return PredictionResponse(risk_level=str(risk_level), confidence=confidence)
