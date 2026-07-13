@@ -39,7 +39,7 @@ class FirestoreService {
         final item =
             FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>);
         // Recompute risk for today's date without mutating Firestore.
-        final currentRisk = RiskUtils.calculateMockRisk(
+        final currentRisk = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
           expiryDate: item.expiryDate,
         );

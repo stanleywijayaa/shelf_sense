@@ -80,7 +80,7 @@ class MlService {
  
   /// Local rule-based estimate used when the ML API can't be reached.
   static String _fallback(FoodItem item) {
-    return RiskUtils.calculateMockRisk(
+    return RiskUtils.calculateLocalRisk(
       purchaseDate: item.purchaseDate,
       expiryDate: item.expiryDate,
     );
