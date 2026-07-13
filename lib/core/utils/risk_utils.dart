@@ -1,17 +1,24 @@
-/// MOCK / PLACEHOLDER RISK LOGIC
+/// LOCAL RISK ESTIMATOR
 /// ─────────────────────────────────────────────────────────────────────────
-/// This is a temporary, rule-based risk calculator used ONLY for UI testing
-/// while the real Machine Learning model (Phase 4) is being developed.
+/// A lightweight, rule-based spoilage-risk estimator. This is a PERMANENT
+/// part of the app's architecture, serving two roles:
 ///
-/// It estimates spoilage risk purely from how close `expiryDate` is to today,
-/// relative to the total shelf life (the gap between purchaseDate and
-/// expiryDate). This has no relation to the actual ML approach — it does NOT
-/// consider food type, storage condition, or any trained patterns.
+///   1. Offline fallback — when the FastAPI ML service is unreachable
+///      (server offline, no network, timeout), MlService uses this so the
+///      app keeps working. See services/ml_service.dart.
 ///
-/// TODO: Replace calls to `calculateMockRisk()` with a real API call to
-/// the FastAPI ML service (see services/ml_service.dart) once the model
-/// is trained and deployed. Once that's wired in, this file can be deleted
-/// or kept only as a fallback for offline/demo mode.
+///   2. Dynamic recalculation on read — FirestoreService recomputes each
+///      item's risk from its dates against the current date every time the
+///      inventory is loaded, so the displayed risk stays current as items
+///      approach expiry without calling the ML API per item.
+///      See services/firestore_service.dart.
+///
+/// It estimates risk purely from how close `expiryDate` is to today relative
+/// to the item's total shelf life. Unlike the ML model, it does NOT consider
+/// food category or storage condition — it is intentionally simple, fast, and
+/// deterministic. The authoritative ML classification is applied at add/edit
+/// time (via the FastAPI service); this estimator keeps the display fresh and
+/// resilient between those events.
 library risk_utils;
  
 class RiskUtils {
@@ -23,7 +30,7 @@ class RiskUtils {
   /// - <= 20% of shelf life left -> High
   /// - <= 50% of shelf life left -> Medium
   /// - > 50% of shelf life left  -> Low
-  static String calculateMockRisk({
+  static String calculateLocalRisk({
     required DateTime purchaseDate,
     required DateTime expiryDate,
   }) {
