@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
-import '../../core/utils/risk_utils.dart';
+import '../../services/ml_service.dart';
  
 class AddItemScreen extends StatefulWidget {
   /// If provided, the screen opens in "edit mode": fields are pre-filled
@@ -34,15 +34,20 @@ class _AddItemScreenState extends State<AddItemScreen> {
   String? _selectedCategory;
   String? _selectedStorage;
  
+  // These MUST match the categories the ML model was trained on
+  // (see ml_backend preprocessing). Sending a category the model never
+  // saw would produce a meaningless prediction, so the app only offers
+  // the model's known categories.
   final List<String> _categories = [
     'Dairy',
     'Meat',
-    'Vegetable',
-    'Fruit',
-    'Grain',
-    'Beverage',
-    'Snack',
-    'Other',
+    'Produce',
+    'Bakery',
+    'Seafood',
+    'Beverages',
+    'Deli',
+    'Frozen_Meals',
+    'Ready_to_Eat',
   ];
  
   final List<String> _storageTypes = [
@@ -70,7 +75,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       _expiryDate = item.expiryDate;
     }
   }
-
+ 
   @override
   void dispose() {
     _nameController.dispose();
@@ -145,14 +150,19 @@ class _AddItemScreenState extends State<AddItemScreen> {
     setState(() => _isLoading = true);
  
     try {
-      // ── MOCK RISK LOGIC (temporary, for UI testing only) ──────────────
-      // TODO: Replace with real ML prediction once ml_service.dart is built.
-      // Original placeholder before mock logic was introduced:
-      //   riskLevel: 'Unknown',
-      final mockRisk = RiskUtils.calculateMockRisk(
+      // ── ML RISK PREDICTION ────────────────────────────────────────────
+      // Build a temporary FoodItem to hand to the ML service, which calls
+      // the FastAPI backend. If the API is unreachable, MlService falls
+      // back to the local rule-based estimate automatically.
+      final tempItem = FoodItem(
+        id: '',
+        name: _nameController.text.trim(),
+        category: _selectedCategory!,
+        storageType: _selectedStorage!,
         purchaseDate: _purchaseDate!,
         expiryDate: _expiryDate!,
       );
+      final predictedRisk = await MlService.predictRisk(tempItem);
  
       if (widget.isEditMode) {
         // ── EDIT MODE: update the existing Firestore document ───────────
@@ -164,7 +174,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
           storageType: _selectedStorage!,
           purchaseDate: _purchaseDate!,
           expiryDate: _expiryDate!,
-          riskLevel: mockRisk, // recalculated since dates may have changed
+          riskLevel: predictedRisk, // from ML API (or local fallback)
         );
  
         await _firestoreService.updateFoodItem(updatedItem);
@@ -187,7 +197,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
           storageType: _selectedStorage!,
           purchaseDate: _purchaseDate!,
           expiryDate: _expiryDate!,
-          riskLevel: mockRisk, // mock until ML model (Phase 4) is integrated
+          riskLevel: predictedRisk, // from ML API (or local fallback)
         );
  
         await _firestoreService.addFoodItem(newItem);
@@ -228,9 +238,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF3A7D44),
         foregroundColor: Colors.white,
-        title: const Text(
-          'Add Food Item',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        title: Text(
+          widget.isEditMode ? 'Edit Food Item' : 'Add Food Item',
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         elevation: 0,
       ),
@@ -354,9 +364,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Add to Inventory',
-                          style: TextStyle(
+                      : Text(
+                          widget.isEditMode ? 'Save Changes' : 'Add to Inventory',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
