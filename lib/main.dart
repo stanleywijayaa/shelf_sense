@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'screens/home/main_screen.dart';
-import 'services/notification_service.dart';
+import 'screens/splash_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  // Set up local notifications (permissions + timezone) before the app runs.
-  await NotificationService.init();
+  // Firebase and notification initialization happen INSIDE SplashScreen,
+  // behind the branded loading animation — so the app window appears
+  // immediately instead of sitting blank while services start up.
   runApp(const ShelfSenseApp());
 }
 
@@ -35,7 +30,7 @@ class ShelfSenseApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const MainScreen(),
+      home: const SplashScreen(),
     );
   }
 }
