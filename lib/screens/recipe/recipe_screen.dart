@@ -4,8 +4,9 @@ import '../../models/food_item.dart';
 import '../../models/recipe.dart';
 import '../../services/firestore_service.dart';
 import '../../services/recipe_service.dart';
-import 'recipe_detail_screen.dart';
+import '../../services/recipe_repository.dart';
 import '../../core/theme/app_shadows.dart';
+import 'recipe_detail_screen.dart';
 
 class RecipeScreen extends StatefulWidget {
   const RecipeScreen({super.key});
@@ -20,8 +21,19 @@ class _RecipeScreenState extends State<RecipeScreen> {
   bool _showAll = false;
   Timer? _debounce;
 
+  /// Recipes loaded via the hybrid repository (cache -> server -> bundled).
+  List<Recipe> _allRecipes = [];
+  bool _recipesLoading = true;
+  bool _refreshing = false;
+
   /// How many suggestions to show before "Show more".
   static const int _topCount = 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecipes();
+  }
 
   @override
   void dispose() {
@@ -30,8 +42,47 @@ class _RecipeScreenState extends State<RecipeScreen> {
     super.dispose();
   }
 
-  /// Waits until the user pauses typing (400ms) before applying the
-  /// search, instead of filtering on every keystroke.
+  Future<void> _loadRecipes() async {
+    final recipes = await RecipeRepository.loadRecipes();
+    if (mounted) {
+      setState(() {
+        _allRecipes = recipes;
+        _recipesLoading = false;
+      });
+    }
+  }
+
+  /// Force-refresh from Firestore (requires internet). Once fetched,
+  /// Firestore's persistence caches the data for offline use.
+  Future<void> _refreshRecipes() async {
+    setState(() => _refreshing = true);
+    try {
+      final recipes = await RecipeRepository.refreshFromServer();
+      if (mounted) {
+        setState(() => _allRecipes = recipes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Recipes updated (${recipes.length} available).'),
+            backgroundColor: const Color(0xFF3A7D44),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Couldn\'t refresh — check your internet connection.'),
+            backgroundColor: Color(0xFFE63946),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  /// Waits until the user pauses typing (400ms) before applying the search.
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
@@ -46,14 +97,21 @@ class _RecipeScreenState extends State<RecipeScreen> {
       body: StreamBuilder<List<FoodItem>>(
         stream: FirestoreService().getFoodItems(),
         builder: (context, snapshot) {
-          final loading =
-              snapshot.connectionState == ConnectionState.waiting;
+          final loading = snapshot.connectionState ==
+                  ConnectionState.waiting ||
+              _recipesLoading;
           final items = snapshot.data ?? [];
-          final recipes = RecipeService.suggestRecipes(items);
+          final suggested = _recipesLoading
+              ? <Recipe>[]
+              : RecipeService.suggestRecipes(items, _allRecipes);
 
           return Column(
             children: [
-              _RecipeHeader(suggestionCount: recipes.length),
+              _RecipeHeader(
+                suggestionCount: suggested.length,
+                refreshing: _refreshing,
+                onRefresh: _refreshing ? null : _refreshRecipes,
+              ),
 
               // Search sits OUTSIDE the rebuilt results area so the
               // TextField is never recreated when results change —
@@ -69,7 +127,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                         child: CircularProgressIndicator(
                             color: Color(0xFF3A7D44)),
                       )
-                    : _buildBody(context, items, recipes),
+                    : _buildBody(context, items, suggested),
               ),
             ],
           );
@@ -79,141 +137,140 @@ class _RecipeScreenState extends State<RecipeScreen> {
   }
 
   Widget _buildBody(
-      BuildContext context, List<FoodItem> items, List<Recipe> allRecipes) {
-    // Apply search filter — contains matching on the recipe NAME only.
-    // Matching hidden ingredient keywords was confusing: "t" would surface
-    // recipes like Apple Pie (via bu-t-ter in its ingredients) whose
-    // visible name contains no "t" at all. Name-only keeps results
-    // explainable at a glance, while contains still lets the query match
-    // anywhere in the name (start, middle, or end).
+      BuildContext context, List<FoodItem> items, List<Recipe> allSuggested) {
+    // Search filter — contains matching on the recipe NAME only, so the
+    // query can sit anywhere in the name and every result visibly
+    // relates to what was typed.
     final q = _query.trim().toLowerCase();
     final searched = q.isEmpty
-        ? allRecipes
-        : allRecipes
+        ? allSuggested
+        : allSuggested
             .where((r) => r.name.toLowerCase().contains(q))
             .toList();
 
-    // Cap to the top matches unless expanded (ranking already done
-    // by RecipeService, so the first N are the most relevant).
+    // Cap to the top matches unless expanded or searching.
     final capped = _showAll || q.isNotEmpty
         ? searched
         : searched.take(_topCount).toList();
     final hiddenCount = searched.length - capped.length;
     final recipes = capped;
 
-          // ── No search results (different from no at-risk items) ─────
-          if (recipes.isEmpty && q.isNotEmpty) {
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+    // ── No search results ─────────────────────────────────────────────
+    if (recipes.isEmpty && q.isNotEmpty) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 48, 16, 32),
+        children: const [
+          Center(
+            child: Column(
               children: [
-                const SizedBox(height: 48),
-                const Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.search_off,
-                          size: 48, color: Color(0xFFCED4DA)),
-                      SizedBox(height: 12),
-                      Text(
-                        'No recipe found with that name',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF495057),
-                        ),
-                      ),
-                    ],
+                Icon(Icons.search_off, size: 48, color: Color(0xFFCED4DA)),
+                SizedBox(height: 12),
+                Text(
+                  'No recipe found with that name',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF495057),
                   ),
                 ),
               ],
-            );
-          }
+            ),
+          ),
+        ],
+      );
+    }
 
-          // ── No at-risk items / no matches ────────────────────────────
-          if (recipes.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.restaurant_menu_outlined, size: 56, color: Color(0xFFCED4DA)),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'No recipe suggestions yet',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF495057),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'When you have items at medium or high\nspoilage risk, recipes to use them up\nwill appear here.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13.5, color: Color(0xFF868E96), height: 1.5),
-                    ),
-                  ],
+    // ── No at-risk items / no matches ─────────────────────────────────
+    if (recipes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.restaurant_menu_outlined,
+                  size: 56, color: Color(0xFFCED4DA)),
+              SizedBox(height: 16),
+              Text(
+                'No recipe suggestions yet',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF495057),
                 ),
               ),
-            );
-          }
-
-          // ── Matched recipes ──────────────────────────────────────────
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4, left: 2),
-                child: Text(
-                  q.isEmpty
-                      ? 'Top suggestions for your at-risk items'
-                      : 'Search results',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF868E96),
-                  ),
+              SizedBox(height: 6),
+              Text(
+                'When you have items at medium or high\nspoilage risk, recipes to use them up\nwill appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: Color(0xFF868E96),
+                  height: 1.5,
                 ),
               ),
-              const SizedBox(height: 8),
-              ...recipes.map((recipe) {
-                final uses = RecipeService.matchedItemNames(recipe, items);
-                return _RecipeCard(
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Matched recipes ────────────────────────────────────────────────
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4, left: 2),
+          child: Text(
+            q.isEmpty
+                ? 'Top suggestions for your at-risk items'
+                : 'Search results',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF868E96),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...recipes.map((recipe) {
+          final uses = RecipeService.matchedItemNames(recipe, items);
+          return _RecipeCard(
+            recipe: recipe,
+            usesItems: uses,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RecipeDetailScreen(
                   recipe: recipe,
                   usesItems: uses,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RecipeDetailScreen(
-                        recipe: recipe,
-                        usesItems: uses,
-                      ),
-                    ),
-                  ),
-                );
-              }),
+                ),
+              ),
+            ),
+          );
+        }),
 
-              // ── Show more (only when results are capped) ──────────────
-              if (hiddenCount > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Center(
-                    child: TextButton.icon(
-                      onPressed: () => setState(() => _showAll = true),
-                      icon: const Icon(Icons.expand_more,
-                          size: 18, color: Color(0xFF3A7D44)),
-                      label: Text(
-                        'Show $hiddenCount more',
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF3A7D44),
-                        ),
-                      ),
-                    ),
+        // ── Show more (only when results are capped) ───────────────────
+        if (hiddenCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: () => setState(() => _showAll = true),
+                icon: const Icon(Icons.expand_more,
+                    size: 18, color: Color(0xFF3A7D44)),
+                label: Text(
+                  'Show $hiddenCount more',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF3A7D44),
                   ),
                 ),
-            ],
-          );
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   /// Rounded search field used at the top of the recipe list.
@@ -231,8 +288,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
           hintText: 'Search recipes',
           hintStyle:
               const TextStyle(fontSize: 13.5, color: Color(0xFFADB5BD)),
-          prefixIcon: const Icon(Icons.search,
-              size: 20, color: Color(0xFF868E96)),
+          prefixIcon:
+              const Icon(Icons.search, size: 20, color: Color(0xFF868E96)),
           suffixIcon: _query.isEmpty
               ? null
               : IconButton(
@@ -257,14 +314,21 @@ class _RecipeScreenState extends State<RecipeScreen> {
 // ─── Curved recipes header ────────────────────────────────────────────────
 class _RecipeHeader extends StatelessWidget {
   final int suggestionCount;
-  const _RecipeHeader({required this.suggestionCount});
+  final bool refreshing;
+  final VoidCallback? onRefresh;
+
+  const _RecipeHeader({
+    required this.suggestionCount,
+    required this.refreshing,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(18, topPadding + 16, 18, 18),
+      padding: EdgeInsets.fromLTRB(18, topPadding + 16, 12, 18),
       decoration: const BoxDecoration(
         color: Color(0xFF3A7D44),
         borderRadius: BorderRadius.only(
@@ -299,18 +363,32 @@ class _RecipeHeader extends StatelessWidget {
               ],
             ),
           ),
+          // ── Refresh recipes (requires internet) ────────────────────
           Container(
-            width: 34,
-            height: 34,
+            width: 38,
+            height: 38,
             decoration: const BoxDecoration(
               color: Color(0x29FFFFFF), // white at ~16% opacity
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.restaurant_menu,
-              size: 17,
-              color: Colors.white,
-            ),
+            child: refreshing
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : IconButton(
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Refresh recipes',
+                    icon: const Icon(
+                      Icons.refresh,
+                      size: 19,
+                      color: Colors.white,
+                    ),
+                    onPressed: onRefresh,
+                  ),
           ),
         ],
       ),
@@ -318,6 +396,7 @@ class _RecipeHeader extends StatelessWidget {
   }
 }
 
+// ─── Recipe card ──────────────────────────────────────────────────────────
 class _RecipeCard extends StatelessWidget {
   final Recipe recipe;
   final List<String> usesItems;
@@ -360,11 +439,13 @@ class _RecipeCard extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      const Icon(Icons.schedule, size: 14, color: Color(0xFF868E96)),
+                      const Icon(Icons.schedule,
+                          size: 14, color: Color(0xFF868E96)),
                       const SizedBox(width: 4),
                       Text(
                         '${recipe.prepMinutes}m',
-                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF868E96)),
+                        style: const TextStyle(
+                            fontSize: 12.5, color: Color(0xFF868E96)),
                       ),
                     ],
                   ),
@@ -373,28 +454,32 @@ class _RecipeCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 recipe.description,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF868E96), height: 1.35),
+                style: const TextStyle(
+                    fontSize: 13, color: Color(0xFF868E96), height: 1.35),
               ),
               if (usesItems.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: usesItems.map((name) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6F0),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF3A7D44),
-                          ),
-                        ),
-                      )).toList(),
+                  children: usesItems
+                      .map((name) => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6F0),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF3A7D44),
+                              ),
+                            ),
+                          ))
+                      .toList(),
                 ),
               ],
             ],
