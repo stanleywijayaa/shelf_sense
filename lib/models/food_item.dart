@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
- 
+
 /// Represents a single food item stored in the user's inventory.
 class FoodItem {
   final String id;
@@ -9,7 +9,7 @@ class FoodItem {
   final DateTime purchaseDate;
   final DateTime expiryDate;
   final String riskLevel;      // "Low" | "Medium" | "High" (placeholder until ML is wired in)
- 
+
   FoodItem({
     required this.id,
     required this.name,
@@ -19,7 +19,7 @@ class FoodItem {
     required this.expiryDate,
     this.riskLevel = "Unknown",
   });
- 
+
   /// Converts this object into a Map so it can be written to Firestore.
   /// Dates are stored as Firestore Timestamps, not raw DateTime,
   /// since Firestore doesn't natively support Dart's DateTime type.
@@ -33,7 +33,7 @@ class FoodItem {
       'riskLevel': riskLevel,
     };
   }
- 
+
   /// Builds a FoodItem from a Firestore document snapshot.
   /// This is used when reading data back out of Firestore.
   factory FoodItem.fromMap(String id, Map<String, dynamic> map) {
@@ -47,11 +47,12 @@ class FoodItem {
       riskLevel: map['riskLevel'] ?? 'Unknown',
     );
   }
- 
+
   /// Convenience helper: a copy of this item with some fields replaced.
   /// Useful later when updating risk level after calling the ML API,
   /// without having to rebuild the whole object manually.
   FoodItem copyWith({
+    String? id,
     String? name,
     String? category,
     String? storageType,
@@ -60,7 +61,7 @@ class FoodItem {
     String? riskLevel,
   }) {
     return FoodItem(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       category: category ?? this.category,
       storageType: storageType ?? this.storageType,
