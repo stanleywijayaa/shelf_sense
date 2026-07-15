@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/food_item.dart';
 import '../../models/recipe.dart';
@@ -17,14 +18,25 @@ class _RecipeScreenState extends State<RecipeScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
   bool _showAll = false;
+  Timer? _debounce;
 
   /// How many suggestions to show before "Show more".
   static const int _topCount = 10;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Waits until the user pauses typing (400ms) before applying the
+  /// search, instead of filtering on every keystroke.
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _query = value);
+    });
   }
 
   @override
@@ -42,6 +54,15 @@ class _RecipeScreenState extends State<RecipeScreen> {
           return Column(
             children: [
               _RecipeHeader(suggestionCount: recipes.length),
+
+              // Search sits OUTSIDE the rebuilt results area so the
+              // TextField is never recreated when results change —
+              // this is what preserves focus while typing.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                child: _searchField(),
+              ),
+
               Expanded(
                 child: loading
                     ? const Center(
@@ -85,7 +106,6 @@ class _RecipeScreenState extends State<RecipeScreen> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
-                _searchField(),
                 const SizedBox(height: 48),
                 const Center(
                   child: Column(
@@ -142,8 +162,6 @@ class _RecipeScreenState extends State<RecipeScreen> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
-              _searchField(),
-              const SizedBox(height: 14),
               Padding(
                 padding: const EdgeInsets.only(bottom: 4, left: 2),
                 child: Text(
@@ -208,7 +226,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
       ),
       child: TextField(
         controller: _searchController,
-        onChanged: (value) => setState(() => _query = value),
+        onChanged: _onSearchChanged,
         decoration: InputDecoration(
           hintText: 'Search recipes',
           hintStyle:
@@ -221,6 +239,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                   icon: const Icon(Icons.close,
                       size: 18, color: Color(0xFF868E96)),
                   onPressed: () {
+                    _debounce?.cancel();
                     _searchController.clear();
                     setState(() => _query = '');
                   },
