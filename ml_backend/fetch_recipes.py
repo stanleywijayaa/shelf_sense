@@ -15,6 +15,7 @@ and report.
 No external packages needed — uses only the Python standard library.
 """
 
+import re
 import urllib.request
 import json
 import time
@@ -77,6 +78,17 @@ def http_get_json(url):
         return json.load(r)
 
 
+def list_all_categories():
+    """Fetch every category name from TheMealDB so we can pull the widest
+    possible set of meals (needed to approach a large target count)."""
+    try:
+        data = http_get_json(f"{API_BASE}/list.php?c=list")
+        return [safe_str(c.get("strCategory")) for c in (data.get("meals") or [])]
+    except Exception as e:
+        print(f"  (couldn't list categories: {e}) — falling back to defaults")
+        return list(FETCH_CATEGORIES)
+
+
 def list_meals_in_category(category):
     """Return meal IDs for a given TheMealDB category."""
     data = http_get_json(f"{API_BASE}/filter.php?c={category}")
@@ -119,17 +131,64 @@ def tag_categories(mealdb_category, keywords):
     return sorted(cats)
 
 
+# Lines that are ONLY a step header, e.g. "STEP 1", "Step 2:", "3." — these
+# duplicate the app's own step numbering and must be dropped.
+_STEP_HEADER = re.compile(r"^\s*(step\s*\d+|\d+)\s*[:.)\-]?\s*$", re.IGNORECASE)
+# Leading numbering stuck to a real step, e.g. "1. Preheat oven" / "Step 2: Mix".
+_LEADING_NUM = re.compile(r"^\s*(step\s*\d+\s*[:.)\-]?\s*|\d+\s*[.)\-]\s+)", re.IGNORECASE)
+# Section labels that sometimes appear as their own lines in the blob.
+_SECTION_LABEL = re.compile(
+    r"^\s*(directions?|instructions?|method|preparation|ingredients|notes?|tips?)\s*:?\s*$",
+    re.IGNORECASE,
+)
+# Serving-size lines, e.g. "2 Servings" / "Serves 4".
+_SERVINGS = re.compile(r"^\s*(\d+\s*servings?|serves\s+\d+)\s*:?\s*$", re.IGNORECASE)
+# Equipment header — everything after it is a gear list, not steps, until an
+# instructions-type label appears.
+_EQUIPMENT = re.compile(r"^\s*equipment\s*:?\s*$", re.IGNORECASE)
+
+
 def split_steps(instructions):
-    """Break the instruction blob into individual steps."""
+    """Break the instruction blob into individual steps.
+
+    Also cleans TheMealDB quirks: standalone "STEP n" header lines are
+    removed, and leading "1." / "Step 2:" numbering is stripped from steps,
+    since the app renders its own step numbers."""
     if not instructions:
         return []
     raw = instructions.replace("\r\n", "\n")
-    # Split on newlines or numbered markers; keep non-empty trimmed lines.
     parts = [p.strip() for p in raw.split("\n") if p.strip()]
     # Some entries are one long paragraph — fall back to sentence-ish split.
     if len(parts) <= 1:
         parts = [s.strip() + "." for s in raw.split(". ") if s.strip()]
-    return parts
+    cleaned = []
+    in_equipment_block = False
+    for p in parts:
+        # Equipment section: skip its gear list until an instructions-type
+        # label ends the block (e.g. "Equipment / Dutch Oven / Instructions").
+        if _EQUIPMENT.match(p):
+            in_equipment_block = True
+            continue
+        if in_equipment_block:
+            if _SECTION_LABEL.match(p):
+                in_equipment_block = False  # label itself is also dropped
+            continue
+
+        if _STEP_HEADER.match(p):
+            continue  # drop lines that are only "STEP 1" / "1" etc.
+        if _SECTION_LABEL.match(p):
+            continue  # drop "DIRECTIONS:" / "Instructions" labels
+        if _SERVINGS.match(p):
+            continue  # drop "2 Servings" / "Serves 4" lines
+        # Drop section-title headers like "STEP 1 - MARINATING THE CHICKEN":
+        # starts with "STEP n" and the whole line is uppercase, so it's a
+        # heading rather than an actual instruction.
+        if re.match(r"^\s*step\s*\d+\b", p, re.IGNORECASE) and p.upper() == p:
+            continue
+        p = _LEADING_NUM.sub("", p).strip()
+        if p:
+            cleaned.append(p)
+    return cleaned
 
 
 def dart_escape(text):
@@ -140,7 +199,12 @@ def main():
     seen = set()
     recipes = []
 
-    for category in FETCH_CATEGORIES:
+    # Pull from EVERY category to maximize the number of unique meals.
+    all_categories = list_all_categories()
+    print(f"Found {len(all_categories)} categories on TheMealDB.")
+    print(f"Targeting up to {TARGET_COUNT} recipes — this may take a few minutes.\n")
+
+    for category in all_categories:
         if len(recipes) >= TARGET_COUNT:
             break
         try:
@@ -148,6 +212,8 @@ def main():
         except Exception as e:
             print(f"  (skipping {category}: {e})")
             continue
+
+        print(f"── {category}: {len(ids)} meals available")
 
         for meal_id in ids:
             if len(recipes) >= TARGET_COUNT:
@@ -184,9 +250,14 @@ def main():
                 "steps": steps,
                 "prepMinutes": 30,  # TheMealDB doesn't provide time; default
             })
-            print(f"  [{len(recipes):2d}] {meal['strMeal']}  -> {cats}")
+            if len(recipes) % 10 == 0:
+                print(f"     ... {len(recipes)} recipes collected so far")
 
-    print(f"\nCollected {len(recipes)} recipes. Writing {OUTPUT_PATH} ...")
+    print(f"\nCollected {len(recipes)} recipes total.")
+    if len(recipes) < TARGET_COUNT:
+        print(f"(TheMealDB's free tier didn't have {TARGET_COUNT} unique meals — "
+              f"{len(recipes)} is the full available set.)")
+    print(f"Writing {OUTPUT_PATH} ...")
     write_dart(recipes)
     print("Done. Move recipe_database.dart into lib/data/ (replacing the old one).")
 
