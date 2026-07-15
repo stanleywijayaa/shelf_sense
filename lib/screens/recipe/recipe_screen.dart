@@ -6,8 +6,26 @@ import '../../services/recipe_service.dart';
 import 'recipe_detail_screen.dart';
 import '../../core/theme/app_shadows.dart';
 
-class RecipeScreen extends StatelessWidget {
+class RecipeScreen extends StatefulWidget {
   const RecipeScreen({super.key});
+
+  @override
+  State<RecipeScreen> createState() => _RecipeScreenState();
+}
+
+class _RecipeScreenState extends State<RecipeScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  bool _showAll = false;
+
+  /// How many suggestions to show before "Show more".
+  static const int _topCount = 10;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +58,55 @@ class RecipeScreen extends StatelessWidget {
   }
 
   Widget _buildBody(
-      BuildContext context, List<FoodItem> items, List<Recipe> recipes) {
+      BuildContext context, List<FoodItem> items, List<Recipe> allRecipes) {
+    // Apply search filter — contains matching on the recipe NAME only.
+    // Matching hidden ingredient keywords was confusing: "t" would surface
+    // recipes like Apple Pie (via bu-t-ter in its ingredients) whose
+    // visible name contains no "t" at all. Name-only keeps results
+    // explainable at a glance, while contains still lets the query match
+    // anywhere in the name (start, middle, or end).
+    final q = _query.trim().toLowerCase();
+    final searched = q.isEmpty
+        ? allRecipes
+        : allRecipes
+            .where((r) => r.name.toLowerCase().contains(q))
+            .toList();
+
+    // Cap to the top matches unless expanded (ranking already done
+    // by RecipeService, so the first N are the most relevant).
+    final capped = _showAll || q.isNotEmpty
+        ? searched
+        : searched.take(_topCount).toList();
+    final hiddenCount = searched.length - capped.length;
+    final recipes = capped;
+
+          // ── No search results (different from no at-risk items) ─────
+          if (recipes.isEmpty && q.isNotEmpty) {
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              children: [
+                _searchField(),
+                const SizedBox(height: 48),
+                const Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.search_off,
+                          size: 48, color: Color(0xFFCED4DA)),
+                      SizedBox(height: 12),
+                      Text(
+                        'No recipe found with that name',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF495057),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
 
           // ── No at-risk items / no matches ────────────────────────────
           if (recipes.isEmpty) {
@@ -76,11 +142,15 @@ class RecipeScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 4, left: 2),
+              _searchField(),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4, left: 2),
                 child: Text(
-                  'Suggested for your at-risk items',
-                  style: TextStyle(
+                  q.isEmpty
+                      ? 'Top suggestions for your at-risk items'
+                      : 'Search results',
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Color(0xFF868E96),
                   ),
@@ -103,8 +173,65 @@ class RecipeScreen extends StatelessWidget {
                   ),
                 );
               }),
+
+              // ── Show more (only when results are capped) ──────────────
+              if (hiddenCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Center(
+                    child: TextButton.icon(
+                      onPressed: () => setState(() => _showAll = true),
+                      icon: const Icon(Icons.expand_more,
+                          size: 18, color: Color(0xFF3A7D44)),
+                      label: Text(
+                        'Show $hiddenCount more',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF3A7D44),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           );
+  }
+
+  /// Rounded search field used at the top of the recipe list.
+  Widget _searchField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: AppShadows.card,
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) => setState(() => _query = value),
+        decoration: InputDecoration(
+          hintText: 'Search recipes',
+          hintStyle:
+              const TextStyle(fontSize: 13.5, color: Color(0xFFADB5BD)),
+          prefixIcon: const Icon(Icons.search,
+              size: 20, color: Color(0xFF868E96)),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: Color(0xFF868E96)),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                  },
+                ),
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        ),
+        style: const TextStyle(fontSize: 14),
+      ),
+    );
   }
 }
 
