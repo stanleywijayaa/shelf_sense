@@ -13,23 +13,34 @@ class RecipeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: const Text('Recipes', style: TextStyle(fontWeight: FontWeight.w600)),
-        elevation: 0,
-      ),
       body: StreamBuilder<List<FoodItem>>(
         stream: FirestoreService().getFoodItems(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF3A7D44)),
-            );
-          }
-
+          final loading =
+              snapshot.connectionState == ConnectionState.waiting;
           final items = snapshot.data ?? [];
           final recipes = RecipeService.suggestRecipes(items);
+
+          return Column(
+            children: [
+              _RecipeHeader(suggestionCount: recipes.length),
+              Expanded(
+                child: loading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF3A7D44)),
+                      )
+                    : _buildBody(context, items, recipes),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBody(
+      BuildContext context, List<FoodItem> items, List<Recipe> recipes) {
 
           // ── No at-risk items / no matches ────────────────────────────
           if (recipes.isEmpty) {
@@ -94,7 +105,68 @@ class RecipeScreen extends StatelessWidget {
               }),
             ],
           );
-        },
+  }
+}
+
+// ─── Curved recipes header ────────────────────────────────────────────────
+class _RecipeHeader extends StatelessWidget {
+  final int suggestionCount;
+  const _RecipeHeader({required this.suggestionCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(18, topPadding + 16, 18, 18),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Recipes',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  suggestionCount == 0
+                      ? 'Nothing at risk right now'
+                      : '$suggestionCount suggestion${suggestionCount == 1 ? '' : 's'} for your at-risk items',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFFCDE3D2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: Color(0x29FFFFFF), // white at ~16% opacity
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.restaurant_menu,
+              size: 17,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

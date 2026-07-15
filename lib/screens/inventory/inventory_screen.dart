@@ -58,15 +58,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'My Inventory',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        elevation: 0,
-      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF3A7D44),
         foregroundColor: Colors.white,
@@ -78,12 +69,35 @@ class _InventoryScreenState extends State<InventoryScreen> {
         },
         child: const Icon(Icons.add),
       ),
-      body: Column(
-        children: [
-          // ── Storage filter chips ─────────────────────────────────────
-          Container(
-            color: const Color(0xFFF8F9FA),
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      body: StreamBuilder<List<FoodItem>>(
+        stream: _firestoreService.getFoodItems(),
+        builder: (context, snapshot) {
+          final allItems = snapshot.data ?? [];
+          final loading =
+              snapshot.connectionState == ConnectionState.waiting;
+          final attentionCount = allItems
+              .where((i) => i.riskLevel == 'High' || i.riskLevel == 'Medium')
+              .length;
+
+          // Apply the storage filter.
+          final items = _selectedFilter == 'All'
+              ? allItems
+              : allItems
+                  .where((i) => i.storageType == _selectedFilter)
+                  .toList();
+
+          return Column(
+            children: [
+              // ── Curved green header with live counts ─────────────────
+              _InventoryHeader(
+                itemCount: allItems.length,
+                attentionCount: attentionCount,
+              ),
+
+              // ── Storage filter chips ─────────────────────────────────
+              Container(
+                color: const Color(0xFFF8F9FA),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -122,78 +136,113 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           ),
 
-          // ── Item list ────────────────────────────────────────────────
-          Expanded(
-            child: StreamBuilder<List<FoodItem>>(
-              stream: _firestoreService.getFoodItems(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF3A7D44)),
-                  );
-                }
+              // ── Item list ────────────────────────────────────────────
+              Expanded(
+                child: loading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF3A7D44)),
+                      )
+                    : snapshot.hasError
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Something went wrong loading your inventory.\n${snapshot.error}',
+                                textAlign: TextAlign.center,
+                                style:
+                                    const TextStyle(color: Color(0xFF868E96)),
+                              ),
+                            ),
+                          )
+                        : allItems.isEmpty
+                            ? _EmptyState(
+                                icon: Icons.inventory_2_outlined,
+                                title: 'Your inventory is empty',
+                                subtitle:
+                                    'Tap the + button to add your first food item.',
+                              )
+                            : items.isEmpty
+                                ? _EmptyState(
+                                    icon: Icons.filter_alt_off_outlined,
+                                    title: 'Nothing in $_selectedFilter',
+                                    subtitle:
+                                        'You have no items stored in the $_selectedFilter.',
+                                  )
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 8, 16, 80),
+                                    itemCount: items.length,
+                                    itemBuilder: (context, index) {
+                                      final item = items[index];
+                                      return FoodItemCard(
+                                        item: item,
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  ItemDetailScreen(item: item),
+                                            ),
+                                          );
+                                        },
+                                        onDelete: () => _confirmDelete(item),
+                                      );
+                                    },
+                                  ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Something went wrong loading your inventory.\n${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF868E96)),
-                      ),
-                    ),
-                  );
-                }
+// ─── Curved inventory header ──────────────────────────────────────────────
+class _InventoryHeader extends StatelessWidget {
+  final int itemCount;
+  final int attentionCount;
 
-                final allItems = snapshot.data ?? [];
+  const _InventoryHeader({
+    required this.itemCount,
+    required this.attentionCount,
+  });
 
-                // Apply the storage filter.
-                final items = _selectedFilter == 'All'
-                    ? allItems
-                    : allItems
-                        .where((i) => i.storageType == _selectedFilter)
-                        .toList();
-
-                // ── Empty states ─────────────────────────────────────
-                if (allItems.isEmpty) {
-                  return _EmptyState(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'Your inventory is empty',
-                    subtitle: 'Tap the + button to add your first food item.',
-                  );
-                }
-
-                if (items.isEmpty) {
-                  // Inventory has items, but none in this storage filter.
-                  return _EmptyState(
-                    icon: Icons.filter_alt_off_outlined,
-                    title: 'Nothing in $_selectedFilter',
-                    subtitle: 'You have no items stored in the $_selectedFilter.',
-                  );
-                }
-
-                // ── Populated list ───────────────────────────────────
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return FoodItemCard(
-                      item: item,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ItemDetailScreen(item: item),
-                          ),
-                        );
-                      },
-                      onDelete: () => _confirmDelete(item),
-                    );
-                  },
-                );
-              },
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(18, topPadding + 16, 18, 18),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'My inventory',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            itemCount == 0
+                ? 'No items yet'
+                : attentionCount == 0
+                    ? '$itemCount item${itemCount == 1 ? '' : 's'}'
+                    : '$itemCount item${itemCount == 1 ? '' : 's'} · $attentionCount need${attentionCount == 1 ? 's' : ''} attention',
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFFCDE3D2),
             ),
           ),
         ],
