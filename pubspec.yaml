@@ -49,6 +49,9 @@ dependencies:
   # Local Notifications
   flutter_local_notifications: ^17.2.2
 
+  # Timezone
+  timezone: ^0.9.4
+
   # Date Picker
   intl: ^0.19.0
 
