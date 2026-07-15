@@ -15,13 +15,11 @@ class RecipeDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: const Text('Recipe', style: TextStyle(fontWeight: FontWeight.w600)),
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
+      body: Column(
+        children: [
+          const _DetailHeader(title: 'Recipe details'),
+          Expanded(
+            child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,17 +39,24 @@ class RecipeDetailScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 14, color: Color(0xFF868E96), height: 1.4),
             ),
             const SizedBox(height: 12),
-            Row(
+            // ── Info chips: time · ingredients · steps ───────────────────
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                const Icon(Icons.schedule, size: 16, color: Color(0xFF3A7D44)),
-                const SizedBox(width: 6),
-                Text(
-                  '${recipe.prepMinutes} min',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF3A7D44),
-                  ),
+                _InfoChip(
+                  icon: Icons.schedule,
+                  label: '${recipe.prepMinutes} min',
+                ),
+                _InfoChip(
+                  icon: Icons.format_list_bulleted,
+                  label:
+                      '${recipe.ingredients.length} ingredient${recipe.ingredients.length == 1 ? '' : 's'}',
+                ),
+                _InfoChip(
+                  icon: Icons.restaurant_menu,
+                  label:
+                      '${recipe.steps.length} step${recipe.steps.length == 1 ? '' : 's'}',
                 ),
               ],
             ),
@@ -154,6 +159,85 @@ class RecipeDetailScreen extends StatelessWidget {
                 )),
           ],
         ),
+      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Curved detail header (shared style with the tab screens) ─────────────
+class _DetailHeader extends StatelessWidget {
+  final String title;
+
+  const _DetailHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(6, topPadding + 8, 18, 14),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Small tinted info chip (time / ingredients / steps) ──────────────────
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _InfoChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6F0),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF2E5C34)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2E5C34),
+            ),
+          ),
+        ],
       ),
     );
   }

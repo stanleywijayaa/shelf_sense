@@ -76,42 +76,39 @@ class ItemDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Item Details',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit item',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => AddItemScreen(existingItem: item),
-                ),
-              ).then((_) {
-                // After editing, pop back to the inventory list so it
-                // reflects the change. The detail screen itself was built
-                // as a StatelessWidget holding a snapshot of `item`, so it
-                // can't refresh in place — returning to the list (whose
-                // StreamBuilder is always live) is the simplest fix.
-                if (context.mounted) Navigator.pop(context);
-              });
-            },
+      body: Column(
+        children: [
+          _DetailHeader(
+            title: 'Item details',
+            actions: [
+              _HeaderActionButton(
+                icon: Icons.edit_outlined,
+                tooltip: 'Edit item',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddItemScreen(existingItem: item),
+                    ),
+                  ).then((_) {
+                    // After editing, pop back to the inventory list so it
+                    // reflects the change. The detail screen holds a static
+                    // snapshot of `item`, so returning to the live list is
+                    // the simplest way to show fresh data.
+                    if (context.mounted) Navigator.pop(context);
+                  });
+                },
+              ),
+              const SizedBox(width: 8),
+              _HeaderActionButton(
+                icon: Icons.delete_outline,
+                tooltip: 'Delete item',
+                onPressed: () => _confirmDelete(context),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Delete item',
-            onPressed: () => _confirmDelete(context),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
+          Expanded(
+            child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,6 +225,84 @@ class ItemDetailScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Curved detail header (shared style with the tab screens) ─────────────
+class _DetailHeader extends StatelessWidget {
+  final String title;
+  final List<Widget> actions;
+
+  const _DetailHeader({required this.title, this.actions = const []});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(6, topPadding + 8, 12, 14),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          ...actions,
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Circular translucent header action button ────────────────────────────
+class _HeaderActionButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _HeaderActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: const BoxDecoration(
+        color: Color(0x29FFFFFF), // white at ~16% opacity
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, size: 18, color: Colors.white),
+        tooltip: tooltip,
+        onPressed: onPressed,
       ),
     );
   }
