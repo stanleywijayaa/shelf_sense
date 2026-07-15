@@ -4,12 +4,13 @@ import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
 import 'add_item_screen.dart';
- 
+import '../../core/theme/app_shadows.dart';
+
 class ItemDetailScreen extends StatelessWidget {
   final FoodItem item;
- 
+
   const ItemDetailScreen({super.key, required this.item});
- 
+
   String get _expiryStatusLabel {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -19,13 +20,13 @@ class ItemDetailScreen extends StatelessWidget {
       item.expiryDate.day,
     );
     final daysLeft = expiry.difference(today).inDays;
- 
+
     if (daysLeft < 0) return 'Expired ${daysLeft.abs()} day${daysLeft.abs() == 1 ? '' : 's'} ago';
     if (daysLeft == 0) return 'Expires today';
     if (daysLeft == 1) return '1 day remaining';
     return '$daysLeft days remaining';
   }
- 
+
   IconData get _storageIcon {
     switch (item.storageType) {
       case 'Fridge':
@@ -38,7 +39,7 @@ class ItemDetailScreen extends StatelessWidget {
         return Icons.inventory_2_outlined;
     }
   }
- 
+
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -59,7 +60,7 @@ class ItemDetailScreen extends StatelessWidget {
         ],
       ),
     );
- 
+
     if (confirmed == true) {
       await FirestoreService().deleteFoodItem(item.id);
       if (context.mounted) {
@@ -70,7 +71,7 @@ class ItemDetailScreen extends StatelessWidget {
       }
     }
   }
- 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,7 +123,7 @@ class ItemDetailScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFEDEFF1)),
+                boxShadow: AppShadows.card,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,9 +196,9 @@ class ItemDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
- 
+
             const SizedBox(height: 20),
- 
+
             // ── Detail rows ──────────────────────────────────────────────
             _DetailRow(
               icon: Icons.shopping_bag_outlined,
@@ -231,20 +232,20 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 }
- 
+
 class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
   final bool isLast;
- 
+
   const _DetailRow({
     required this.icon,
     required this.label,
     required this.value,
     this.isLast = false,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     return Container(

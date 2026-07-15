@@ -4,6 +4,7 @@ import '../../models/recipe.dart';
 import '../../services/firestore_service.dart';
 import '../../services/recipe_service.dart';
 import 'recipe_detail_screen.dart';
+import '../../core/theme/app_shadows.dart';
 
 class RecipeScreen extends StatelessWidget {
   const RecipeScreen({super.key});
@@ -117,7 +118,7 @@ class _RecipeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDEFF1)),
+        boxShadow: AppShadows.card,
       ),
       child: InkWell(
         onTap: onTap,

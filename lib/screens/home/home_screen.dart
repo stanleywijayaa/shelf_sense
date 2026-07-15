@@ -1,195 +1,195 @@
 import 'package:flutter/material.dart';
-//import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
+import '../../core/theme/app_shadows.dart';
 import '../../widgets/risk_badge.dart';
 import '../inventory/item_detail_screen.dart';
- 
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
- 
-  // ─── Derived lists from the full inventory ─────────────────────────────────
- 
-  /// Items expiring within the next 3 days (any risk level).
+
   List<FoodItem> _expiringSoon(List<FoodItem> items) {
     final cutoff = DateTime.now().add(const Duration(days: 3));
-    return items
-        .where((item) => item.expiryDate.isBefore(cutoff))
-        .toList();
+    return items.where((item) => item.expiryDate.isBefore(cutoff)).toList();
   }
- 
-  /// Items classified as High or Medium risk, ordered soonest-expiry first.
-  /// Capped at 5 for the "Requiring Attention" section.
+
   List<FoodItem> _requiresAttention(List<FoodItem> items) {
     return items
-        .where((item) =>
-            item.riskLevel == 'High' || item.riskLevel == 'Medium')
+        .where((i) => i.riskLevel == 'High' || i.riskLevel == 'Medium')
         .take(5)
         .toList();
   }
- 
-  /// Full inventory ordered by soonest expiry — the consumption priority queue.
-  /// Capped at 5 for the dashboard section.
+
   List<FoodItem> _consumptionPriority(List<FoodItem> items) {
-    return items.take(5).toList(); // already ordered by expiryDate from Firestore
+    return items.take(5).toList();
   }
- 
-  // ─── Days remaining label ──────────────────────────────────────────────────
+
   String _daysLabel(DateTime expiryDate) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final expiry = DateTime(
-      expiryDate.year,
-      expiryDate.month,
-      expiryDate.day,
-    );
+    final expiry =
+        DateTime(expiryDate.year, expiryDate.month, expiryDate.day);
     final days = expiry.difference(today).inDays;
     if (days < 0) return 'Expired';
     if (days == 0) return 'Today';
     if (days == 1) return '1 day left';
     return '$days days left';
   }
- 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'ShelfSense',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
-        ),
-        elevation: 0,
-      ),
+      // No AppBar — the curved green header below replaces it.
       body: StreamBuilder<List<FoodItem>>(
         stream: FirestoreService().getFoodItems(),
         builder: (context, snapshot) {
-          // ── Loading ────────────────────────────────────────────────────
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF3A7D44)),
-            );
-          }
- 
-          // ── Error ──────────────────────────────────────────────────────
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Failed to load dashboard.\n${snapshot.error}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF868E96)),
-              ),
-            );
-          }
- 
           final items = snapshot.data ?? [];
+          final loading =
+              snapshot.connectionState == ConnectionState.waiting;
+
           final attentionItems = _requiresAttention(items);
           final priorityItems = _consumptionPriority(items);
           final expiringSoonCount = _expiringSoon(items).length;
           final highRiskCount =
               items.where((i) => i.riskLevel == 'High').length;
- 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+
+          return Column(
             children: [
-              // ── Section 1: Summary Statistics ──────────────────────────
-              _SectionHeader(title: 'Summary'),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Total Items',
-                      value: '${items.length}',
-                      icon: Icons.inventory_2_outlined,
-                      color: const Color(0xFF3A7D44),
-                      backgroundColor: const Color(0xFFEFF6F0),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Expiring Soon',
-                      value: '$expiringSoonCount',
-                      icon: Icons.schedule_outlined,
-                      color: const Color(0xFFB8650A),
-                      backgroundColor: const Color(0xFFFFF4E0),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _StatCard(
-                      label: 'High Risk',
-                      value: '$highRiskCount',
-                      icon: Icons.warning_amber_outlined,
-                      color: const Color(0xFFC62828),
-                      backgroundColor: const Color(0xFFFCE8E8),
-                    ),
-                  ),
-                ],
-              ),
- 
-              const SizedBox(height: 28),
- 
-              // ── Section 2: Items Requiring Attention ───────────────────
-              _SectionHeader(
-                title: 'Requires Attention',
-                subtitle: 'High & Medium risk items',
-              ),
-              const SizedBox(height: 12),
-              attentionItems.isEmpty
-                  ? _EmptyCard(
-                      icon: Icons.check_circle_outline,
-                      message: 'All items are looking good!',
-                    )
-                  : Column(
-                      children: attentionItems
-                          .map((item) => _AttentionItemRow(
-                                item: item,
-                                daysLabel: _daysLabel(item.expiryDate),
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        ItemDetailScreen(item: item),
-                                  ),
-                                ),
-                              ))
-                          .toList(),
-                    ),
- 
-              const SizedBox(height: 28),
- 
-              // ── Section 3: Recommended Consumption Priority ────────────
-              _SectionHeader(
-                title: 'Consumption Priority',
-                subtitle: 'Use these up first',
-              ),
-              const SizedBox(height: 12),
-              priorityItems.isEmpty
-                  ? _EmptyCard(
-                      icon: Icons.add_shopping_cart_outlined,
-                      message: 'Add items to your inventory to get started.',
-                    )
-                  : Column(
-                      children: List.generate(
-                        priorityItems.length,
-                        (index) => _PriorityItemRow(
-                          rank: index + 1,
-                          item: priorityItems[index],
-                          daysLabel: _daysLabel(priorityItems[index].expiryDate),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ItemDetailScreen(item: priorityItems[index]),
+              // ── Curved green header ──────────────────────────────────
+              _CurvedHeader(itemCount: items.length),
+
+              Expanded(
+                child: loading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF3A7D44)),
+                      )
+                    : snapshot.hasError
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Failed to load dashboard.\n${snapshot.error}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Color(0xFF868E96)),
+                              ),
                             ),
+                          )
+                        : ListView(
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                            children: [
+                              // ── Summary stats ──────────────────────
+                              const _SectionHeader(title: 'Summary'),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _StatCard(
+                                      label: 'Total items',
+                                      value: '${items.length}',
+                                      icon: Icons.inventory_2_outlined,
+                                      color: const Color(0xFF3A7D44),
+                                      backgroundColor:
+                                          const Color(0xFFEFF6F0),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _StatCard(
+                                      label: 'Expiring soon',
+                                      value: '$expiringSoonCount',
+                                      icon: Icons.schedule_outlined,
+                                      color: const Color(0xFFB8650A),
+                                      backgroundColor:
+                                          const Color(0xFFFFF4E0),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _StatCard(
+                                      label: 'High risk',
+                                      value: '$highRiskCount',
+                                      icon: Icons.warning_amber_outlined,
+                                      color: const Color(0xFFC62828),
+                                      backgroundColor:
+                                          const Color(0xFFFCE8E8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 28),
+
+                              // ── Requires attention ─────────────────
+                              const _SectionHeader(
+                                title: 'Requires attention',
+                                subtitle: 'High & medium risk items',
+                              ),
+                              const SizedBox(height: 12),
+                              attentionItems.isEmpty
+                                  ? const _EmptyCard(
+                                      icon: Icons.check_circle_outline,
+                                      message: 'All items are looking good!',
+                                    )
+                                  : Column(
+                                      children: attentionItems
+                                          .map((item) => _AttentionItemRow(
+                                                item: item,
+                                                daysLabel: _daysLabel(
+                                                    item.expiryDate),
+                                                onTap: () => Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        ItemDetailScreen(
+                                                            item: item),
+                                                  ),
+                                                ),
+                                              ))
+                                          .toList(),
+                                    ),
+
+                              const SizedBox(height: 28),
+
+                              // ── Consumption priority ───────────────
+                              const _SectionHeader(
+                                title: 'Consumption priority',
+                                subtitle: 'Use these up first',
+                              ),
+                              const SizedBox(height: 12),
+                              priorityItems.isEmpty
+                                  ? const _EmptyCard(
+                                      icon: Icons.add_shopping_cart_outlined,
+                                      message:
+                                          'Add items to your inventory to get started.',
+                                    )
+                                  : Column(
+                                      children: List.generate(
+                                        priorityItems.length,
+                                        (index) => _PriorityItemRow(
+                                          rank: index + 1,
+                                          item: priorityItems[index],
+                                          daysLabel: _daysLabel(
+                                              priorityItems[index]
+                                                  .expiryDate),
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  ItemDetailScreen(
+                                                item: priorityItems[index],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ],
                           ),
-                        ),
-                      ),
-                    ),
+              ),
             ],
           );
         },
@@ -197,14 +197,58 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
- 
-// ─── Section Header ───────────────────────────────────────────────────────────
+
+// ─── Curved green header ──────────────────────────────────────────────────
+class _CurvedHeader extends StatelessWidget {
+  final int itemCount;
+  const _CurvedHeader({required this.itemCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(18, topPadding + 16, 18, 22),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'ShelfSense',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            itemCount == 0
+                ? 'Add items to start tracking freshness'
+                : 'Keeping $itemCount item${itemCount == 1 ? '' : 's'} fresh',
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFFCDE3D2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Section header ───────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
- 
   const _SectionHeader({required this.title, this.subtitle});
- 
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -235,15 +279,15 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
- 
-// ─── Summary Stat Card ────────────────────────────────────────────────────────
+
+// ─── Stat card ────────────────────────────────────────────────────────────
 class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
   final Color color;
   final Color backgroundColor;
- 
+
   const _StatCard({
     required this.label,
     required this.value,
@@ -251,15 +295,15 @@ class _StatCard extends StatelessWidget {
     required this.color,
     required this.backgroundColor,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDEFF1)),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,7 +320,7 @@ class _StatCard extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: FontWeight.w700,
               color: color,
             ),
@@ -295,19 +339,30 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
- 
-// ─── Attention Item Row ───────────────────────────────────────────────────────
+
+// ─── Attention row (with risk edge strip) ─────────────────────────────────
 class _AttentionItemRow extends StatelessWidget {
   final FoodItem item;
   final String daysLabel;
   final VoidCallback onTap;
- 
+
   const _AttentionItemRow({
     required this.item,
     required this.daysLabel,
     required this.onTap,
   });
- 
+
+  Color get _edgeColor {
+    switch (item.riskLevel) {
+      case 'High':
+        return const Color(0xFFC62828);
+      case 'Medium':
+        return const Color(0xFFBA7517);
+      default:
+        return const Color(0xFF2E7D32);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -315,39 +370,58 @@ class _AttentionItemRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEDEFF1)),
+        boxShadow: AppShadows.card,
       ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: IntrinsicHeight(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C1C1E),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${item.category} · $daysLabel',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF868E96),
-                      ),
-                    ),
-                  ],
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: _edgeColor,
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(12),
+                  ),
                 ),
               ),
-              RiskBadge(riskLevel: item.riskLevel),
+              Expanded(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1C1C1E),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${item.category} · $daysLabel',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFF868E96),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      RiskBadge(riskLevel: item.riskLevel),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -355,21 +429,21 @@ class _AttentionItemRow extends StatelessWidget {
     );
   }
 }
- 
-// ─── Priority Item Row ────────────────────────────────────────────────────────
+
+// ─── Priority row ─────────────────────────────────────────────────────────
 class _PriorityItemRow extends StatelessWidget {
   final int rank;
   final FoodItem item;
   final String daysLabel;
   final VoidCallback onTap;
- 
+
   const _PriorityItemRow({
     required this.rank,
     required this.item,
     required this.daysLabel,
     required this.onTap,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -377,7 +451,7 @@ class _PriorityItemRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEDEFF1)),
+        boxShadow: AppShadows.card,
       ),
       child: InkWell(
         onTap: onTap,
@@ -386,7 +460,6 @@ class _PriorityItemRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              // ── Rank number ──────────────────────────────────────────
               Container(
                 width: 28,
                 height: 28,
@@ -406,8 +479,6 @@ class _PriorityItemRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
- 
-              // ── Name + expiry ────────────────────────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,8 +502,6 @@ class _PriorityItemRow extends StatelessWidget {
                   ],
                 ),
               ),
- 
-              // ── Risk badge ───────────────────────────────────────────
               RiskBadge(riskLevel: item.riskLevel),
             ],
           ),
@@ -441,14 +510,13 @@ class _PriorityItemRow extends StatelessWidget {
     );
   }
 }
- 
-// ─── Empty State Card ─────────────────────────────────────────────────────────
+
+// ─── Empty card ───────────────────────────────────────────────────────────
 class _EmptyCard extends StatelessWidget {
   final IconData icon;
   final String message;
- 
   const _EmptyCard({required this.icon, required this.message});
- 
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -457,7 +525,7 @@ class _EmptyCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEDEFF1)),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         children: [
@@ -466,10 +534,7 @@ class _EmptyCard extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF868E96),
-            ),
+            style: const TextStyle(fontSize: 13, color: Color(0xFF868E96)),
           ),
         ],
       ),

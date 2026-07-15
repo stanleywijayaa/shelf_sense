@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Small colored pill that displays a food item's spoilage risk level.
-/// Centralizing the color logic here means risk colors stay consistent
-/// everywhere they're shown (inventory list, item detail, recipe screen, etc).
+/// Includes a leading dot indicator so the risk reads at a glance.
 class RiskBadge extends StatelessWidget {
   final String riskLevel;
 
@@ -24,13 +23,27 @@ class RiskBadge extends StatelessWidget {
   Color get _textColor {
     switch (riskLevel) {
       case 'Low':
+        return const Color(0xFF1B5E20);
+      case 'Medium':
+        return const Color(0xFF633806);
+      case 'High':
+        return const Color(0xFF791F1F);
+      default:
+        return const Color(0xFF6C757D);
+    }
+  }
+
+  /// Saturated dot colour — stronger than the text so it reads as a signal.
+  Color get _dotColor {
+    switch (riskLevel) {
+      case 'Low':
         return const Color(0xFF2E7D32);
       case 'Medium':
-        return const Color(0xFFB8650A);
+        return const Color(0xFFBA7517);
       case 'High':
         return const Color(0xFFC62828);
       default:
-        return const Color(0xFF6C757D);
+        return const Color(0xFFADB5BD);
     }
   }
 
@@ -42,13 +55,27 @@ class RiskBadge extends StatelessWidget {
         color: _backgroundColor,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        riskLevel,
-        style: TextStyle(
-          color: _textColor,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: _dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            riskLevel,
+            style: TextStyle(
+              color: _textColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
