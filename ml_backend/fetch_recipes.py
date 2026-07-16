@@ -21,12 +21,17 @@ import json
 import time
 
 API_BASE = "https://www.themealdb.com/api/json/v1/1"
-TARGET_COUNT = 200
+TARGET_COUNT = 250
 OUTPUT_PATH = "recipe_database.dart"
 
 # ── Map TheMealDB categories -> ShelfSense categories ────────────────────
 # TheMealDB categorizes by type/cuisine; we translate to the app's scheme.
-# Anything unmapped falls back to keyword-based tagging (see tag_categories).
+#
+# DELIBERATE EXCLUSIONS: recipes are never tagged Frozen_Meals, Beverages,
+# or Ready_to_Eat. Those item types are consumed directly rather than cooked
+# into recipes, so a category-level match against them would be meaningless
+# (e.g. suggesting a pasta bake "uses up" your soft drink). Items in those
+# categories can still match recipes by NAME, which stays precise.
 MEALDB_CATEGORY_MAP = {
     "Beef": "Meat",
     "Chicken": "Meat",
@@ -36,15 +41,11 @@ MEALDB_CATEGORY_MAP = {
     "Seafood": "Seafood",
     "Vegetarian": "Produce",
     "Vegan": "Produce",
-    "Breakfast": "Ready_to_Eat",
-    "Side": "Ready_to_Eat",
-    "Starter": "Ready_to_Eat",
-    "Miscellaneous": "Ready_to_Eat",
-    "Pasta": "Ready_to_Eat",
     "Dessert": "Bakery",
 }
 
 # Keyword -> ShelfSense category, for enriching tags from ingredients.
+# (Beverage keywords removed — see exclusion note above.)
 KEYWORD_CATEGORY = {
     "milk": "Dairy", "cheese": "Dairy", "cream": "Dairy", "butter": "Dairy",
     "yogurt": "Dairy", "yoghurt": "Dairy",
@@ -53,8 +54,18 @@ KEYWORD_CATEGORY = {
     "fish": "Seafood", "salmon": "Seafood", "prawn": "Seafood",
     "shrimp": "Seafood", "tuna": "Seafood", "cod": "Seafood",
     "bread": "Bakery", "flour": "Bakery", "dough": "Bakery",
-    "juice": "Beverages", "wine": "Beverages",
 }
+
+# Plant-based "milks" and creams are NOT dairy — without this exclusion,
+# "coconut milk" substring-matches the "milk" keyword and falsely tags
+# a curry as a Dairy recipe.
+_NON_DAIRY_PREFIXES = (
+    "coconut", "almond", "soy", "soya", "oat", "rice", "cashew", "peanut",
+)
+
+# Stocks/broths are derived flavourings — "chicken stock" doesn't use up a
+# chicken breast, so it shouldn't tag the recipe as Meat/Seafood/Deli.
+_DERIVED_SUFFIXES = ("stock", "broth", "bouillon")
 
 # Which TheMealDB categories to pull from, to get a good spread.
 FETCH_CATEGORIES = [
@@ -123,11 +134,19 @@ def tag_categories(mealdb_category, keywords):
         cats.add(MEALDB_CATEGORY_MAP[mealdb_category])
     for kw in keywords:
         for token, cat in KEYWORD_CATEGORY.items():
-            if token in kw:
-                cats.add(cat)
-    # Fallback so every recipe has at least one category
-    if not cats:
-        cats.add("Ready_to_Eat")
+            if token not in kw:
+                continue
+            # Plant-based milks/creams are not dairy (e.g. "coconut milk").
+            if cat == "Dairy" and any(p in kw for p in _NON_DAIRY_PREFIXES):
+                continue
+            # Stocks/broths don't use up the animal itself.
+            if cat in ("Meat", "Seafood", "Deli") and any(
+                    s in kw for s in _DERIVED_SUFFIXES):
+                continue
+            cats.add(cat)
+    # No fallback tag: a recipe with no mapped categories simply matches
+    # by ingredient NAME only, which is precise. (Previously fell back to
+    # Ready_to_Eat, which is now a deliberately untagged category.)
     return sorted(cats)
 
 
