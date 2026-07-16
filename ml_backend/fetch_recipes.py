@@ -199,25 +199,34 @@ def main():
     seen = set()
     recipes = []
 
-    # Pull from EVERY category to maximize the number of unique meals.
+    # Pull from EVERY category, ROUND-ROBIN rather than alphabetically.
+    # Filling category-by-category would exhaust the target on the first
+    # few (Beef, Breakfast, Chicken, Dessert...) and leave Seafood,
+    # Vegetarian, etc. with ZERO recipes — breaking suggestions for those
+    # food types. Round-robin guarantees every category is represented.
     all_categories = list_all_categories()
     print(f"Found {len(all_categories)} categories on TheMealDB.")
     print(f"Targeting up to {TARGET_COUNT} recipes — this may take a few minutes.\n")
 
+    # Build per-category ID queues first.
+    queues = {}
     for category in all_categories:
-        if len(recipes) >= TARGET_COUNT:
-            break
         try:
-            ids = list_meals_in_category(category)
+            queues[category] = list_meals_in_category(category)
+            print(f"── {category}: {len(queues[category])} meals available")
         except Exception as e:
             print(f"  (skipping {category}: {e})")
-            continue
+    print()
 
-        print(f"── {category}: {len(ids)} meals available")
-
-        for meal_id in ids:
+    # Rotate through categories, taking one meal at a time from each.
+    while len(recipes) < TARGET_COUNT and any(queues.values()):
+        for category in list(queues.keys()):
             if len(recipes) >= TARGET_COUNT:
                 break
+            if not queues[category]:
+                continue
+
+            meal_id = queues[category].pop(0)
             if meal_id in seen:
                 continue
             seen.add(meal_id)
@@ -254,10 +263,21 @@ def main():
                 print(f"     ... {len(recipes)} recipes collected so far")
 
     print(f"\nCollected {len(recipes)} recipes total.")
+
+    # Report the spread across ShelfSense categories so you can confirm
+    # every food type the app offers has recipes to match against.
+    spread = {}
+    for r in recipes:
+        for c in r["categories"]:
+            spread[c] = spread.get(c, 0) + 1
+    print("\nShelfSense category coverage:")
+    for c in sorted(spread, key=lambda k: -spread[k]):
+        print(f"  {c:15s} {spread[c]}")
+
     if len(recipes) < TARGET_COUNT:
-        print(f"(TheMealDB's free tier didn't have {TARGET_COUNT} unique meals — "
+        print(f"\n(TheMealDB's free tier didn't have {TARGET_COUNT} unique meals — "
               f"{len(recipes)} is the full available set.)")
-    print(f"Writing {OUTPUT_PATH} ...")
+    print(f"\nWriting {OUTPUT_PATH} ...")
     write_dart(recipes)
     print("Done. Move recipe_database.dart into lib/data/ (replacing the old one).")
 
