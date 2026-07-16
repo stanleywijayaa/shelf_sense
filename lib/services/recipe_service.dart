@@ -50,6 +50,12 @@ class RecipeService {
     return matched;
   }
 
+  /// Categories where the category FALLBACK is disabled, because items
+  /// within them are not substitutable for one another: a recipe using
+  /// butter should not be suggested as "using up" your milk. Items in
+  /// these categories only match on their actual name.
+  static const Set<String> _nameMatchOnlyCategories = {'Dairy'};
+
   /// True if the recipe matches the item by name (preferred) or category.
   static bool _recipeMatchesItem(Recipe recipe, FoodItem item) {
     final itemName = item.name.toLowerCase();
@@ -62,6 +68,10 @@ class RecipeService {
     }
 
     // ── Tier 2: category fallback ───────────────────────────────────────
+    // Skipped for non-substitutable categories (see above).
+    if (_nameMatchOnlyCategories.contains(item.category)) {
+      return false;
+    }
     if (recipe.categories.contains(item.category)) {
       return true;
     }
