@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
+import '../../core/constants/food_categories.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
 import 'add_item_screen.dart';
@@ -155,7 +156,7 @@ class ItemDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${item.category} · ${item.storageType}',
+                              '${FoodCategories.label(item.category)} · ${item.storageType}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: Color(0xFF868E96),
@@ -210,7 +211,7 @@ class ItemDetailScreen extends StatelessWidget {
             _DetailRow(
               icon: Icons.category_outlined,
               label: 'Category',
-              value: item.category,
+              value: FoodCategories.label(item.category),
             ),
             _DetailRow(
               icon: Icons.shelves,

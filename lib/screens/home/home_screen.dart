@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/food_item.dart';
+import '../../core/constants/food_categories.dart';
 import '../../services/firestore_service.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../widgets/risk_badge.dart';
@@ -408,7 +409,7 @@ class _AttentionItemRow extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '${item.category} · $daysLabel',
+                              '${FoodCategories.label(item.category)} · $daysLabel',
                               style: const TextStyle(
                                 fontSize: 12.5,
                                 color: Color(0xFF868E96),

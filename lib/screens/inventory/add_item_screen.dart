@@ -3,67 +3,56 @@ import 'package:intl/intl.dart';
 import '../../models/food_item.dart';
 import '../../services/firestore_service.dart';
 import '../../services/ml_service.dart';
- 
+import '../../core/constants/food_categories.dart';
+
 class AddItemScreen extends StatefulWidget {
   /// If provided, the screen opens in "edit mode": fields are pre-filled
   /// with this item's data, and submitting calls updateFoodItem() instead
   /// of addFoodItem(). If null, the screen behaves as the original
   /// "add new item" form.
   final FoodItem? existingItem;
- 
+
   const AddItemScreen({super.key, this.existingItem});
- 
+
   /// Convenience getter used throughout the State class to check
   /// whether we're editing an existing item or adding a new one.
   bool get isEditMode => existingItem != null;
- 
+
   @override
   State<AddItemScreen> createState() => _AddItemScreenState();
 }
- 
+
 class _AddItemScreenState extends State<AddItemScreen> {
   // ─── Form & Services ───────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   final FirestoreService _firestoreService = FirestoreService();
   bool _isLoading = false;
- 
+
   // ─── Controllers ───────────────────────────────────────────────────────────
   final TextEditingController _nameController = TextEditingController();
- 
+
   // ─── Dropdown Selections ────────────────────────────────────────────────────
   String? _selectedCategory;
   String? _selectedStorage;
- 
-  // These MUST match the categories the ML model was trained on
-  // (see ml_backend preprocessing). Sending a category the model never
-  // saw would produce a meaningless prediction, so the app only offers
-  // the model's known categories.
-  final List<String> _categories = [
-    'Dairy',
-    'Meat',
-    'Produce',
-    'Bakery',
-    'Seafood',
-    'Beverages',
-    'Deli',
-    'Frozen_Meals',
-    'Ready_to_Eat',
-  ];
- 
+
+  // Raw model values live in FoodCategories.values; the dropdown shows
+  // FoodCategories.label(...) so users never see underscores/jargon.
+  final List<String> _categories = FoodCategories.values;
+
   final List<String> _storageTypes = [
     'Fridge',
     'Freezer',
     'Pantry',
   ];
- 
+
   // ─── Date Selections ────────────────────────────────────────────────────────
   DateTime? _purchaseDate;
   DateTime? _expiryDate;
- 
+
   @override
   void initState() {
     super.initState();
- 
+
     // If we were given an existing item, pre-fill every field so the
     // user is editing their current data rather than starting blank.
     final item = widget.existingItem;
@@ -75,17 +64,17 @@ class _AddItemScreenState extends State<AddItemScreen> {
       _expiryDate = item.expiryDate;
     }
   }
- 
+
   @override
   void dispose() {
     _nameController.dispose();
     super.dispose();
   }
- 
+
   // ─── Date Picker Helper ─────────────────────────────────────────────────────
   Future<void> _pickDate({required bool isPurchaseDate}) async {
     final now = DateTime.now();
- 
+
     final picked = await showDatePicker(
       context: context,
       initialDate: now,
@@ -108,7 +97,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         );
       },
     );
- 
+
     if (picked != null) {
       setState(() {
         if (isPurchaseDate) {
@@ -119,12 +108,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
       });
     }
   }
- 
+
   // ─── Submit ─────────────────────────────────────────────────────────────────
   Future<void> _submit() async {
     // Validate form fields (name, category, storage)
     if (!_formKey.currentState!.validate()) return;
- 
+
     // Validate dates separately since they aren't inside a TextFormField
     if (_purchaseDate == null || _expiryDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -135,7 +124,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       );
       return;
     }
- 
+
     // Sanity check: expiry should be after purchase
     if (_expiryDate!.isBefore(_purchaseDate!)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,9 +135,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
       );
       return;
     }
- 
+
     setState(() => _isLoading = true);
- 
+
     try {
       // ── ML RISK PREDICTION ────────────────────────────────────────────
       // Build a temporary FoodItem to hand to the ML service, which calls
@@ -163,7 +152,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         expiryDate: _expiryDate!,
       );
       final predictedRisk = await MlService.predictRisk(tempItem);
- 
+
       if (widget.isEditMode) {
         // ── EDIT MODE: update the existing Firestore document ───────────
         // Reuse the original item's id via copyWith() so we don't have
@@ -176,9 +165,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
           expiryDate: _expiryDate!,
           riskLevel: predictedRisk, // from ML API (or local fallback)
         );
- 
+
         await _firestoreService.updateFoodItem(updatedItem);
- 
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -199,9 +188,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
           expiryDate: _expiryDate!,
           riskLevel: predictedRisk, // from ML API (or local fallback)
         );
- 
+
         await _firestoreService.addFoodItem(newItem);
- 
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -229,7 +218,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
- 
+
   // ─── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -265,9 +254,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                   return null;
                 },
               ),
- 
+
               const SizedBox(height: 24),
- 
+
               // ── Category ───────────────────────────────────────────────────
               _SectionLabel(label: 'Category'),
               const SizedBox(height: 8),
@@ -275,16 +264,19 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 value: _selectedCategory,
                 decoration: _inputDecoration(hint: 'Select a category'),
                 items: _categories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .map((c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(FoodCategories.label(c)),
+                        ))
                     .toList(),
                 onChanged: (value) =>
                     setState(() => _selectedCategory = value),
                 validator: (value) =>
                     value == null ? 'Please select a category.' : null,
               ),
- 
+
               const SizedBox(height: 24),
- 
+
               // ── Storage Type ───────────────────────────────────────────────
               _SectionLabel(label: 'Storage Location'),
               const SizedBox(height: 8),
@@ -299,9 +291,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 validator: (value) =>
                     value == null ? 'Please select a storage location.' : null,
               ),
- 
+
               const SizedBox(height: 24),
- 
+
               // ── Dates ──────────────────────────────────────────────────────
               Row(
                 children: [
@@ -338,9 +330,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
                   ),
                 ],
               ),
- 
+
               const SizedBox(height: 40),
- 
+
               // ── Submit Button ──────────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
@@ -373,7 +365,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                         ),
                 ),
               ),
- 
+
               const SizedBox(height: 24),
             ],
           ),
@@ -381,7 +373,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       ),
     );
   }
- 
+
   // ─── Shared Input Decoration ─────────────────────────────────────────────
   InputDecoration _inputDecoration({required String hint}) {
     return InputDecoration(
@@ -413,12 +405,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
     );
   }
 }
- 
+
 // ─── Section Label Widget ─────────────────────────────────────────────────────
 class _SectionLabel extends StatelessWidget {
   final String label;
   const _SectionLabel({required this.label});
- 
+
   @override
   Widget build(BuildContext context) {
     return Text(
@@ -431,14 +423,14 @@ class _SectionLabel extends StatelessWidget {
     );
   }
 }
- 
+
 // ─── Date Picker Button Widget ────────────────────────────────────────────────
 class _DatePickerButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
- 
+
   const _DatePickerButton({required this.label, required this.onTap});
- 
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/food_item.dart';
+import '../core/constants/food_categories.dart';
 import '../core/theme/app_shadows.dart';
 import 'risk_badge.dart';
 
@@ -108,7 +109,7 @@ class FoodItemCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${item.category} · ${item.storageType}',
+                              '${FoodCategories.label(item.category)} · ${item.storageType}',
                               style: const TextStyle(
                                 fontSize: 12.5,
                                 color: Color(0xFF868E96),
