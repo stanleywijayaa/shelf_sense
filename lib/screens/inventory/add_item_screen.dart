@@ -224,16 +224,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF3A7D44),
-        foregroundColor: Colors.white,
-        title: Text(
-          widget.isEditMode ? 'Edit Food Item' : 'Add Food Item',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
+      body: Column(
+        children: [
+          _AddItemHeader(
+            title: widget.isEditMode ? 'Edit food item' : 'Add food item',
+          ),
+          Expanded(
+            child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
@@ -371,6 +368,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
           ),
         ),
       ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -464,6 +464,48 @@ class _DatePickerButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Curved header (matches the tab and detail screens) ───────────────────
+class _AddItemHeader extends StatelessWidget {
+  final String title;
+
+  const _AddItemHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(6, topPadding + 8, 18, 14),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A7D44),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
