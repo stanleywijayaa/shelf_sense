@@ -28,9 +28,10 @@ class FirestoreService {
   ///
   /// Risk is RECALCULATED locally on every read using the current date, so
   /// the displayed risk stays current as items approach expiry without
-  /// calling the ML API per item. Items with no expiry date keep the
-  /// classification the no-expiry ML model produced at add/edit time,
-  /// since the local heuristic needs dates.
+  /// calling the ML API per item. Items with no expiry date are estimated
+  /// from their category's typical shelf life adjusted for storage type,
+  /// so they age over time too rather than being frozen at the value the
+  /// no-expiry model produced on the day they were added.
   Stream<List<FoodItem>> getFoodItems() {
     return _inventoryRef.snapshots().map((snapshot) {
       final items = snapshot.docs.map((doc) {
@@ -40,8 +41,12 @@ class FirestoreService {
         final currentRisk = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
           expiryDate: item.expiryDate,
+          category: item.category,
+          storageType: item.storageType,
         );
-        // null == no expiry date -> keep the stored ML prediction.
+        // Items WITH an expiry date use the date-based heuristic; items
+        // without one use the category/storage shelf-life estimate. Both
+        // age over time, so displayed risk stays current either way.
         return currentRisk == null
             ? item
             : item.copyWith(riskLevel: currentRisk);

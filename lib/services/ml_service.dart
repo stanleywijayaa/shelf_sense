@@ -12,11 +12,13 @@ class MlService {
   /// Base URL of the FastAPI server.
   ///
   /// IMPORTANT — this depends on where you run the app:
-  ///  - Android emulator:      http://10.0.2.2:8000   (special alias for host)
+  ///  - Flutter web / Chrome:   http://localhost:8000   <-- CURRENT
+  ///  - Android emulator:       http://10.0.2.2:8000  (alias for the host PC)
   ///  - Real device (your A71): http://<your-PC-LAN-IP>:8000
-  ///        e.g. http://192.168.1.5:8000  — find it with `ipconfig` on Windows
-  ///        (the IPv4 address). The phone and PC must be on the same Wi-Fi.
-  ///  - localhost does NOT work from a phone — that points to the phone itself.
+  ///        e.g. http://192.168.1.5:8000 — find it with `ipconfig` on Windows
+  ///        (the IPv4 address). Phone and PC must share the same Wi-Fi, and
+  ///        uvicorn must run with --host 0.0.0.0.
+  ///  - localhost does NOT work from a phone — it points at the phone itself.
   static const String _baseUrl = "http://localhost:8000";
 
   /// How long to wait for the API before giving up and using the fallback.
@@ -85,13 +87,15 @@ class MlService {
   }
 
   /// Local rule-based estimate used when the ML API can't be reached.
-  /// The heuristic is date-based, so for items with no expiry date it
-  /// returns null — we fall back to "Unknown" rather than inventing a
-  /// classification the app has no basis for.
+  /// Handles both cases: dated items use the expiry-ratio heuristic, undated
+  /// items use their category's typical shelf life adjusted for storage. Only
+  /// truly unrecognisable input falls through to "Unknown".
   static String _fallback(FoodItem item) {
     return RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
           expiryDate: item.expiryDate,
+          category: item.category,
+          storageType: item.storageType,
         ) ??
         'Unknown';
   }

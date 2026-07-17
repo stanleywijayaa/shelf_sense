@@ -20,10 +20,15 @@
 /// time (via the FastAPI service); this estimator keeps the display fresh and
 /// resilient between those events.
 ///
-/// ITEMS WITHOUT AN EXPIRY DATE: this heuristic is date-based, so it cannot
-/// estimate risk for them — calculateLocalRisk returns null. Those items keep
-/// the classification produced by the no-expiry ML model at add/edit time.
+/// ITEMS WITHOUT AN EXPIRY DATE are handled by a second, rule-based path
+/// (see _estimateWithoutExpiry). Instead of a real expiry, it uses the
+/// category's typical shelf life adjusted for storage type — so these items
+/// still age over time and still get a sensible offline estimate, rather
+/// than being frozen at whatever the ML model said on the day they were
+/// added.
 library risk_utils;
+
+import '../constants/shelf_life_estimates.dart';
 
 class RiskUtils {
   /// Returns "Low", "Medium", or "High" based on how much of the item's
@@ -35,12 +40,21 @@ class RiskUtils {
   /// - <= 20% of shelf life left -> High
   /// - <= 50% of shelf life left -> Medium
   /// - > 50% of shelf life left  -> Low
+  /// `category` and `storageType` are only needed for items with no expiry
+  /// date; they let the estimator fall back to typical shelf life.
   static String? calculateLocalRisk({
     required DateTime purchaseDate,
     DateTime? expiryDate,
+    String? category,
+    String? storageType,
   }) {
-    // No date to reason about — the caller should keep the ML prediction.
-    if (expiryDate == null) return null;
+    if (expiryDate == null) {
+      return _estimateWithoutExpiry(
+        purchaseDate: purchaseDate,
+        category: category,
+        storageType: storageType,
+      );
+    }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -77,5 +91,46 @@ class RiskUtils {
     } else {
       return 'Low';
     }
+  }
+
+  /// Rule-based estimate for items with NO expiry date.
+  ///
+  /// Uses the same "proportion of shelf life remaining" logic as the dated
+  /// path, but substitutes an ESTIMATED shelf life (category median, adjusted
+  /// for storage) for a real expiry date. Returns null only if the caller
+  /// couldn't supply category/storage, in which case there is nothing to
+  /// reason from.
+  ///
+  /// This is a deliberate business-rule layer: it encodes domain knowledge
+  /// the ML model cannot express — notably that a perishable item stored in
+  /// a pantry degrades far faster — because the dataset's risk is driven by
+  /// continuous temperature history that a manual-entry app cannot supply.
+  static String? _estimateWithoutExpiry({
+    required DateTime purchaseDate,
+    String? category,
+    String? storageType,
+  }) {
+    if (category == null || storageType == null) return null;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final purchase = DateTime(
+      purchaseDate.year,
+      purchaseDate.month,
+      purchaseDate.day,
+    );
+
+    final estimatedShelfLife =
+        ShelfLifeEstimates.estimateDays(category, storageType);
+    if (estimatedShelfLife <= 0) return 'High';
+
+    final daysElapsed = today.difference(purchase).inDays;
+    final remainingRatio =
+        (estimatedShelfLife - daysElapsed) / estimatedShelfLife;
+
+    // Past its typical shelf life -> High.
+    if (remainingRatio <= 0.2) return 'High';
+    if (remainingRatio <= 0.5) return 'Medium';
+    return 'Low';
   }
 }
