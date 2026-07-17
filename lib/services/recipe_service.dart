@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models/food_item.dart';
 import '../models/recipe.dart';
 
@@ -41,11 +43,18 @@ class RecipeService {
       }
     }
 
-    // Return matched recipes, highest score first.
-    final matched = allRecipes
-        .where((r) => scores.containsKey(r.id))
-        .toList()
-      ..sort((a, b) => scores[b.id]!.compareTo(scores[a.id]!));
+    // Return matched recipes, highest score first, with WEEKLY ROTATION
+    // among equally-relevant recipes (see _weeklyTieBreak).
+    final matched =
+        allRecipes.where((r) => scores.containsKey(r.id)).toList();
+
+    final tieBreak = _weeklyTieBreak(matched);
+    matched.sort((a, b) {
+      final byScore = scores[b.id]!.compareTo(scores[a.id]!);
+      if (byScore != 0) return byScore;
+      // Same relevance -> order decided by this week's seed.
+      return tieBreak[a.id]!.compareTo(tieBreak[b.id]!);
+    });
 
     return matched;
   }
@@ -55,6 +64,32 @@ class RecipeService {
   /// butter should not be suggested as "using up" your milk. Items in
   /// these categories only match on their actual name.
   static const Set<String> _nameMatchOnlyCategories = {'Dairy'};
+
+
+  /// Assigns each recipe a random-but-STABLE ordering value for the current
+  /// week, used only to break ties between equally-relevant recipes.
+  ///
+  /// WHY ROTATE RATHER THAN FETCH MORE:
+  /// The recipe source (TheMealDB) contains a few hundred recipes in total,
+  /// most of which are already bundled — so periodically fetching "new"
+  /// recipes would exhaust the source almost immediately. Boredom is better
+  /// addressed by varying WHICH of the equally-suitable recipes surface.
+  ///
+  /// The seed is the ISO week number, so:
+  ///   * the order is identical for every call within a week (no reshuffling
+  ///     while the user scrolls, and no need to persist anything), and
+  ///   * it changes automatically when the week rolls over.
+  /// Relevance ranking is never violated: a recipe that matches more at-risk
+  /// items always outranks one that matches fewer, regardless of the seed.
+  static Map<String, int> _weeklyTieBreak(List<Recipe> recipes) {
+    final weekSeed =
+        DateTime.now().difference(DateTime(2020, 1, 1)).inDays ~/ 7;
+    final rng = Random(weekSeed);
+    // Sort by id first so the input order can't affect the result — the
+    // seed alone determines the rotation.
+    final ids = recipes.map((r) => r.id).toList()..sort();
+    return {for (final id in ids) id: rng.nextInt(1 << 30)};
+  }
 
   /// True if the recipe matches the item by name (preferred) or category.
   static bool _recipeMatchesItem(Recipe recipe, FoodItem item) {
