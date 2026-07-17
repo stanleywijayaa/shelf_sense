@@ -63,7 +63,6 @@ def build_models():
         "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
     }
  
-    # XGBoost — add if available
     try:
         from xgboost import XGBClassifier
         models["XGBoost"] = XGBClassifier(
@@ -73,8 +72,7 @@ def build_models():
         )
     except ImportError:
         print("(XGBoost not installed — skipping. `pip install xgboost` to include it.)")
- 
-    # LightGBM — add if available
+
     try:
         from lightgbm import LGBMClassifier
         models["LightGBM"] = LGBMClassifier(random_state=42, verbose=-1)
