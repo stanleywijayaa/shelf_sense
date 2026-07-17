@@ -1,0 +1,24 @@
+{
+  "spoilage_sensitivity": {
+    "Bakery": 0.5,
+    "Beverages": 0.4,
+    "Dairy": 0.7,
+    "Deli": 0.75,
+    "Frozen_Meals": 0.3,
+    "Meat": 0.9,
+    "Produce": 0.6,
+    "Ready_to_Eat": 0.9,
+    "Seafood": 0.95
+  },
+  "median_shelf_life": {
+    "Bakery": 4.0,
+    "Beverages": 18.0,
+    "Dairy": 17.0,
+    "Deli": 9.0,
+    "Frozen_Meals": 212.0,
+    "Meat": 6.0,
+    "Produce": 12.0,
+    "Ready_to_Eat": 3.0,
+    "Seafood": 5.0
+  }
+}
