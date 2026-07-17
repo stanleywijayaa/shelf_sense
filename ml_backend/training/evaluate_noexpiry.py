@@ -47,6 +47,15 @@ FEATURE_SETS = {
                                             "spoilage_sensitivity_cat",
                                             "est_remaining_days",
                                             "est_life_used_ratio"],
+    # CEILING TEST — not a deployable option.
+    # Uses the dataset's TRUE per-item shelf_life_days, which varies WITHIN
+    # a category (unlike a category median, which is a constant and was shown
+    # above to add nothing). This is the best case a per-item shelf-life
+    # reference such as the USDA FoodKeeper dataset could ever achieve, with
+    # zero name-matching error. If this does not beat set 2, no external
+    # lookup will, and the idea can be rejected without building the pipeline.
+    "7. CEILING: + true per-item shelf_life": BASE + ["spoilage_sensitivity_cat",
+                                                      "shelf_life_days"],
 }
 
 

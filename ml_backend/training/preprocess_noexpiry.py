@@ -110,6 +110,11 @@ def main():
         "category_median_shelf_life",
         "est_remaining_days",
         "est_life_used_ratio",
+        # Carried through ONLY to test the ceiling of a per-item shelf-life
+        # lookup (e.g. USDA FoodKeeper). This is the dataset's true per-row
+        # value — the best case any external reference could achieve. It is
+        # NOT app-suppliable as-is; see evaluate_noexpiry.py set 7.
+        "shelf_life_days",
     ]
     df = df[feature_cols + ["risk_level"]].copy()
 
