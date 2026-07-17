@@ -46,7 +46,12 @@ class NotificationService {
   /// Uses a stable integer id derived from the item's Firestore id so we can
   /// cancel/replace it later.
   static Future<void> scheduleForItem(FoodItem item) async {
-    final notifyDate = item.expiryDate.subtract(
+    // No expiry date -> nothing to schedule against. Local notifications
+    // are scheduled ahead of time against a fixed moment, and these items
+    // have none, so they are skipped. (Documented limitation.)
+    if (item.expiryDate == null) return;
+
+    final notifyDate = item.expiryDate!.subtract(
       const Duration(days: daysBeforeExpiry),
     );
 

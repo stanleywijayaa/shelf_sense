@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
- 
+
 /// Talks to the ShelfSense FastAPI ML backend to get a real spoilage-risk
 /// prediction for a food item. Falls back to the local rule-based estimate
 /// (risk_utils.dart) if the API is unreachable — so the app still works
@@ -17,33 +17,38 @@ class MlService {
   ///        e.g. http://192.168.1.5:8000  — find it with `ipconfig` on Windows
   ///        (the IPv4 address). The phone and PC must be on the same Wi-Fi.
   ///  - localhost does NOT work from a phone — that points to the phone itself.
-  /// "http://localhost:8000" if you run the app in a web browser on the same machine as the server.
   static const String _baseUrl = "http://localhost:8000";
- 
+
   /// How long to wait for the API before giving up and using the fallback.
   static const Duration _timeout = Duration(seconds: 5);
- 
+
   /// Returns "Low", "Medium", or "High" for the given item.
   /// Tries the ML API first; on any failure, uses the local mock estimate.
   static Future<String> predictRisk(FoodItem item) async {
     // Derive the date features the API expects, from the item's dates.
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
- 
+
     final purchase = DateTime(
       item.purchaseDate.year,
       item.purchaseDate.month,
       item.purchaseDate.day,
     );
-    final expiry = DateTime(
-      item.expiryDate.year,
-      item.expiryDate.month,
-      item.expiryDate.day,
-    );
- 
     final daysSincePurchase = today.difference(purchase).inDays;
-    final daysUntilExpiry = expiry.difference(today).inDays;
- 
+
+    // Null when the item has no expiry date — the API then routes to the
+    // no-expiry model. Sending the field as null (rather than omitting it)
+    // matches the Optional[int] schema on the server.
+    int? daysUntilExpiry;
+    if (item.expiryDate != null) {
+      final expiry = DateTime(
+        item.expiryDate!.year,
+        item.expiryDate!.month,
+        item.expiryDate!.day,
+      );
+      daysUntilExpiry = expiry.difference(today).inDays;
+    }
+
     try {
       final response = await http
           .post(
@@ -55,11 +60,12 @@ class MlService {
               // clamp to >= 0 since the API requires days_since_purchase >= 0
               "days_since_purchase":
                   daysSincePurchase < 0 ? 0 : daysSincePurchase,
+              // null -> server uses the no-expiry model
               "days_until_expiry": daysUntilExpiry,
             }),
           )
           .timeout(_timeout);
- 
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final risk = data["risk_level"];
@@ -77,12 +83,16 @@ class MlService {
       return _fallback(item);
     }
   }
- 
+
   /// Local rule-based estimate used when the ML API can't be reached.
+  /// The heuristic is date-based, so for items with no expiry date it
+  /// returns null — we fall back to "Unknown" rather than inventing a
+  /// classification the app has no basis for.
   static String _fallback(FoodItem item) {
     return RiskUtils.calculateLocalRisk(
-      purchaseDate: item.purchaseDate,
-      expiryDate: item.expiryDate,
-    );
+          purchaseDate: item.purchaseDate,
+          expiryDate: item.expiryDate,
+        ) ??
+        'Unknown';
   }
 }

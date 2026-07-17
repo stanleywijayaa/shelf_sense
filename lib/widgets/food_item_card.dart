@@ -18,13 +18,17 @@ class FoodItemCard extends StatelessWidget {
   });
 
   /// Returns a human-readable countdown string, e.g. "3 days left".
+  /// Items with no expiry date say so instead of showing a countdown —
+  /// the asymmetry is informative: it tells the user which items lack dates.
   String get _expiryLabel {
+    if (item.expiryDate == null) return 'No expiry date';
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final expiry = DateTime(
-      item.expiryDate.year,
-      item.expiryDate.month,
-      item.expiryDate.day,
+      item.expiryDate!.year,
+      item.expiryDate!.month,
+      item.expiryDate!.day,
     );
     final daysLeft = expiry.difference(today).inDays;
 

@@ -13,12 +13,16 @@ class ItemDetailScreen extends StatelessWidget {
   const ItemDetailScreen({super.key, required this.item});
 
   String get _expiryStatusLabel {
+    if (item.expiryDate == null) {
+      return 'No expiry date — risk estimated from category, storage and age';
+    }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final expiry = DateTime(
-      item.expiryDate.year,
-      item.expiryDate.month,
-      item.expiryDate.day,
+      item.expiryDate!.year,
+      item.expiryDate!.month,
+      item.expiryDate!.day,
     );
     final daysLeft = expiry.difference(today).inDays;
 
@@ -206,7 +210,9 @@ class ItemDetailScreen extends StatelessWidget {
             _DetailRow(
               icon: Icons.event_busy_outlined,
               label: 'Expiry Date',
-              value: DateFormat('dd MMM yyyy').format(item.expiryDate),
+              value: item.expiryDate == null
+                  ? 'Not set'
+                  : DateFormat('dd MMM yyyy').format(item.expiryDate!),
             ),
             _DetailRow(
               icon: Icons.category_outlined,

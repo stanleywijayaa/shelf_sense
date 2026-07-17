@@ -49,6 +49,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
   DateTime? _purchaseDate;
   DateTime? _expiryDate;
 
+  /// Many household items have no printed expiry date (loose produce, bulk
+  /// goods, homemade food). When this is false the item is saved without a
+  /// date and the API routes to the no-expiry ML model.
+  bool _hasExpiryDate = true;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +67,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       _selectedStorage = item.storageType;
       _purchaseDate = item.purchaseDate;
       _expiryDate = item.expiryDate;
+      _hasExpiryDate = item.expiryDate != null;
     }
   }
 
@@ -115,10 +121,21 @@ class _AddItemScreenState extends State<AddItemScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     // Validate dates separately since they aren't inside a TextFormField
-    if (_purchaseDate == null || _expiryDate == null) {
+    if (_purchaseDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select both purchase and expiry dates.'),
+          content: Text('Please select a purchase date.'),
+          backgroundColor: Color(0xFFE63946),
+        ),
+      );
+      return;
+    }
+
+    if (_hasExpiryDate && _expiryDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Please select an expiry date, or turn off "This item has an expiry date".'),
           backgroundColor: Color(0xFFE63946),
         ),
       );
@@ -126,7 +143,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
 
     // Sanity check: expiry should be after purchase
-    if (_expiryDate!.isBefore(_purchaseDate!)) {
+    if (_hasExpiryDate && _expiryDate!.isBefore(_purchaseDate!)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Expiry date must be after purchase date.'),
@@ -143,13 +160,15 @@ class _AddItemScreenState extends State<AddItemScreen> {
       // Build a temporary FoodItem to hand to the ML service, which calls
       // the FastAPI backend. If the API is unreachable, MlService falls
       // back to the local rule-based estimate automatically.
+      final effectiveExpiry = _hasExpiryDate ? _expiryDate : null;
+
       final tempItem = FoodItem(
         id: '',
         name: _nameController.text.trim(),
         category: _selectedCategory!,
         storageType: _selectedStorage!,
         purchaseDate: _purchaseDate!,
-        expiryDate: _expiryDate!,
+        expiryDate: effectiveExpiry,
       );
       final predictedRisk = await MlService.predictRisk(tempItem);
 
@@ -162,7 +181,10 @@ class _AddItemScreenState extends State<AddItemScreen> {
           category: _selectedCategory!,
           storageType: _selectedStorage!,
           purchaseDate: _purchaseDate!,
-          expiryDate: _expiryDate!,
+          expiryDate: effectiveExpiry,
+          // Needed when the user turns the expiry toggle OFF while editing:
+          // passing null alone can't distinguish "unchanged" from "clear".
+          clearExpiry: !_hasExpiryDate,
           riskLevel: predictedRisk, // from ML API (or local fallback)
         );
 
@@ -185,7 +207,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
           category: _selectedCategory!,
           storageType: _selectedStorage!,
           purchaseDate: _purchaseDate!,
-          expiryDate: _expiryDate!,
+          expiryDate: effectiveExpiry,
           riskLevel: predictedRisk, // from ML API (or local fallback)
         );
 
@@ -292,41 +314,72 @@ class _AddItemScreenState extends State<AddItemScreen> {
               const SizedBox(height: 24),
 
               // ── Dates ──────────────────────────────────────────────────────
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _SectionLabel(label: 'Purchase Date'),
-                        const SizedBox(height: 8),
-                        _DatePickerButton(
-                          label: _purchaseDate != null
-                              ? DateFormat('dd MMM yyyy').format(_purchaseDate!)
-                              : 'Select date',
-                          onTap: () => _pickDate(isPurchaseDate: true),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _SectionLabel(label: 'Expiry Date'),
-                        const SizedBox(height: 8),
-                        _DatePickerButton(
-                          label: _expiryDate != null
-                              ? DateFormat('dd MMM yyyy').format(_expiryDate!)
-                              : 'Select date',
-                          onTap: () => _pickDate(isPurchaseDate: false),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              // ── Purchase date (always required) ─────────────────────
+              _SectionLabel(label: 'Purchase Date'),
+              const SizedBox(height: 8),
+              _DatePickerButton(
+                label: _purchaseDate != null
+                    ? DateFormat('dd MMM yyyy').format(_purchaseDate!)
+                    : 'Select date',
+                onTap: () => _pickDate(isPurchaseDate: true),
               ),
+
+              const SizedBox(height: 20),
+
+              // ── Optional expiry date ─────────────────────────────────
+              // Many items have no printed date. Turning this off saves the
+              // item without one; the API then uses the no-expiry model.
+              // NOTE: styling goes on the SwitchListTile itself (tileColor /
+              // shape) rather than a wrapping Container. ListTile paints its
+              // background and ink splash on the nearest Material ancestor,
+              // so a decorated Container would cover them — Flutter asserts
+              // "ListTile background color or ink splashes may be invisible".
+              SwitchListTile(
+                value: _hasExpiryDate,
+                onChanged: (value) {
+                  setState(() {
+                    _hasExpiryDate = value;
+                    if (!value) _expiryDate = null;
+                  });
+                },
+                activeColor: const Color(0xFF3A7D44),
+                tileColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: const BorderSide(color: Color(0xFFDEE2E6)),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                title: const Text(
+                  'This item has an expiry date',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF495057),
+                  ),
+                ),
+                subtitle: Text(
+                  _hasExpiryDate
+                      ? 'Risk is predicted using the expiry date'
+                      : 'Risk is estimated from category, storage and age',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF868E96),
+                  ),
+                ),
+              ),
+
+              if (_hasExpiryDate) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(label: 'Expiry Date'),
+                const SizedBox(height: 8),
+                _DatePickerButton(
+                  label: _expiryDate != null
+                      ? DateFormat('dd MMM yyyy').format(_expiryDate!)
+                      : 'Select date',
+                  onTap: () => _pickDate(isPurchaseDate: false),
+                ),
+              ],
 
               const SizedBox(height: 40),
 

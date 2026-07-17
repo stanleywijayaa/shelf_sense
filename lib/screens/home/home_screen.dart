@@ -9,9 +9,15 @@ import '../inventory/item_detail_screen.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  /// Items expiring within the next 3 days. Items with no expiry date are
+  /// excluded — there is no date to compare against, so counting them would
+  /// be meaningless.
   List<FoodItem> _expiringSoon(List<FoodItem> items) {
     final cutoff = DateTime.now().add(const Duration(days: 3));
-    return items.where((item) => item.expiryDate.isBefore(cutoff)).toList();
+    return items
+        .where((item) =>
+            item.expiryDate != null && item.expiryDate!.isBefore(cutoff))
+        .toList();
   }
 
   List<FoodItem> _requiresAttention(List<FoodItem> items) {
@@ -21,11 +27,31 @@ class HomeScreen extends StatelessWidget {
         .toList();
   }
 
+  /// The "use these up first" queue: highest risk first, then soonest
+  /// expiry. Items with no expiry date still appear (ranked by risk) but
+  /// sort after dated items at the same risk level, since their urgency
+  /// is less certain.
   List<FoodItem> _consumptionPriority(List<FoodItem> items) {
-    return items.take(5).toList();
+    const riskOrder = {'High': 0, 'Medium': 1, 'Low': 2, 'Unknown': 3};
+
+    final sorted = [...items]..sort((a, b) {
+        final ra = riskOrder[a.riskLevel] ?? 3;
+        final rb = riskOrder[b.riskLevel] ?? 3;
+        if (ra != rb) return ra.compareTo(rb);
+
+        // Same risk -> soonest expiry first, undated last.
+        if (a.expiryDate == null && b.expiryDate == null) return 0;
+        if (a.expiryDate == null) return 1;
+        if (b.expiryDate == null) return -1;
+        return a.expiryDate!.compareTo(b.expiryDate!);
+      });
+
+    return sorted.take(5).toList();
   }
 
-  String _daysLabel(DateTime expiryDate) {
+  String _daysLabel(DateTime? expiryDate) {
+    if (expiryDate == null) return 'No expiry date';
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final expiry =

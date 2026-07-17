@@ -19,21 +19,29 @@
 /// deterministic. The authoritative ML classification is applied at add/edit
 /// time (via the FastAPI service); this estimator keeps the display fresh and
 /// resilient between those events.
+///
+/// ITEMS WITHOUT AN EXPIRY DATE: this heuristic is date-based, so it cannot
+/// estimate risk for them — calculateLocalRisk returns null. Those items keep
+/// the classification produced by the no-expiry ML model at add/edit time.
 library risk_utils;
- 
+
 class RiskUtils {
   /// Returns "Low", "Medium", or "High" based on how much of the item's
-  /// shelf life has elapsed.
+  /// shelf life has elapsed, or NULL when the item has no expiry date.
   ///
   /// Logic:
+  /// - No expiry date            -> null (caller keeps the stored ML value)
   /// - Already expired           -> High
   /// - <= 20% of shelf life left -> High
   /// - <= 50% of shelf life left -> Medium
   /// - > 50% of shelf life left  -> Low
-  static String calculateLocalRisk({
+  static String? calculateLocalRisk({
     required DateTime purchaseDate,
-    required DateTime expiryDate,
+    DateTime? expiryDate,
   }) {
+    // No date to reason about — the caller should keep the ML prediction.
+    if (expiryDate == null) return null;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final purchase = DateTime(
@@ -46,22 +54,22 @@ class RiskUtils {
       expiryDate.month,
       expiryDate.day,
     );
- 
+
     // Already expired -> automatically High risk
     if (today.isAfter(expiry)) {
       return 'High';
     }
- 
+
     final totalShelfLifeDays = expiry.difference(purchase).inDays;
     final daysRemaining = expiry.difference(today).inDays;
- 
+
     // Guard against division by zero (e.g. purchase date == expiry date)
     if (totalShelfLifeDays <= 0) {
       return 'High';
     }
- 
+
     final remainingRatio = daysRemaining / totalShelfLifeDays;
- 
+
     if (remainingRatio <= 0.2) {
       return 'High';
     } else if (remainingRatio <= 0.5) {

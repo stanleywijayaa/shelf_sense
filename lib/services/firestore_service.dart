@@ -11,53 +11,58 @@ class FirestoreService {
       FirebaseFirestore.instance.collection('inventory');
 
   /// Adds a new food item to Firestore.
-  /// Firestore auto-generates the document ID, so we don't need to
-  /// supply one — `item.id` can be left empty when creating a new item.
   Future<void> addFoodItem(FoodItem item) async {
     // .add() generates the document ID; capture it so we can schedule a
     // notification tied to this specific item.
     final docRef = await _inventoryRef.add(item.toMap());
-    // Rebuild the item carrying its real Firestore id, then schedule.
     final savedItem = item.copyWith(id: docRef.id);
     await NotificationService.scheduleForItem(savedItem);
   }
 
   /// Returns a real-time stream of all food items in the inventory.
-  /// Using a Stream (instead of a one-time fetch) means the UI
-  /// automatically updates whenever Firestore data changes —
-  /// no manual refresh needed.
   ///
-  /// Risk is RECALCULATED locally on every read using the current date.
-  /// The `riskLevel` stored in Firestore is the ML model's classification
-  /// at entry time, but it becomes stale as days pass (an item gets closer
-  /// to expiry each day). To keep the displayed risk current — satisfying
-  /// the "update risk dynamically" requirement — we recompute a fresh
-  /// estimate here from each item's dates using the local rule-based
-  /// RiskUtils. This is instant and needs no network, so the list stays
-  /// responsive and works offline. The authoritative ML prediction is
-  /// still applied on add/edit via MlService.
+  /// SORTING IS DONE CLIENT-SIDE, deliberately. A Firestore
+  /// `.orderBy('expiryDate')` would silently EXCLUDE documents whose
+  /// expiryDate is null — items without an expiry date would vanish from
+  /// the inventory entirely. Sorting in Dart keeps them, placed last.
+  ///
+  /// Risk is RECALCULATED locally on every read using the current date, so
+  /// the displayed risk stays current as items approach expiry without
+  /// calling the ML API per item. Items with no expiry date keep the
+  /// classification the no-expiry ML model produced at add/edit time,
+  /// since the local heuristic needs dates.
   Stream<List<FoodItem>> getFoodItems() {
-    return _inventoryRef
-        .orderBy('expiryDate') // soonest-to-expire items first
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
+    return _inventoryRef.snapshots().map((snapshot) {
+      final items = snapshot.docs.map((doc) {
         final item =
             FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>);
-        // Recompute risk for today's date without mutating Firestore.
+
         final currentRisk = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
           expiryDate: item.expiryDate,
         );
-        return item.copyWith(riskLevel: currentRisk);
+        // null == no expiry date -> keep the stored ML prediction.
+        return currentRisk == null
+            ? item
+            : item.copyWith(riskLevel: currentRisk);
       }).toList();
+
+      // Soonest-to-expire first; items without an expiry date go last.
+      items.sort((a, b) {
+        if (a.expiryDate == null && b.expiryDate == null) return 0;
+        if (a.expiryDate == null) return 1;
+        if (b.expiryDate == null) return -1;
+        return a.expiryDate!.compareTo(b.expiryDate!);
+      });
+
+      return items;
     });
   }
 
   /// Updates an existing food item by its document ID.
   Future<void> updateFoodItem(FoodItem item) async {
     await _inventoryRef.doc(item.id).update(item.toMap());
-    // Reschedule in case the expiry date changed.
+    // Reschedule in case the expiry date changed (or was removed).
     await NotificationService.cancelForItem(item.id);
     await NotificationService.scheduleForItem(item);
   }
