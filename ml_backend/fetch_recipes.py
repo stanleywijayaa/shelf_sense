@@ -21,7 +21,7 @@ import json
 import time
 
 API_BASE = "https://www.themealdb.com/api/json/v1/1"
-TARGET_COUNT = 250
+TARGET_COUNT = 50 # TheMealDB's free tier has ~300 unique meals, so this is the max
 OUTPUT_PATH = "recipe_database.dart"
 
 # ── Map TheMealDB categories -> ShelfSense categories ────────────────────

@@ -19,7 +19,7 @@ class MlService {
   ///        (the IPv4 address). Phone and PC must share the same Wi-Fi, and
   ///        uvicorn must run with --host 0.0.0.0.
   ///  - localhost does NOT work from a phone — it points at the phone itself.
-  static const String _baseUrl = "http://localhost:8000";
+  static const String _baseUrl = "http://192.168.100.11:8000";
 
   /// How long to wait for the API before giving up and using the fallback.
   static const Duration _timeout = Duration(seconds: 5);
