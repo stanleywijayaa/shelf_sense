@@ -184,12 +184,17 @@ class ItemDetailScreen extends StatelessWidget {
                       children: [
                         const Icon(Icons.schedule, size: 16, color: Color(0xFF495057)),
                         const SizedBox(width: 8),
-                        Text(
-                          _expiryStatusLabel,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF495057),
+                        // Expanded lets the text use the remaining row width and
+                        // wrap to multiple lines instead of overflowing off-screen
+                        // (the no-expiry label is long).
+                        Expanded(
+                          child: Text(
+                            _expiryStatusLabel,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF495057),
+                            ),
                           ),
                         ),
                       ],
