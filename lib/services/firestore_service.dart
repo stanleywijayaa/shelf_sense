@@ -11,11 +11,25 @@ class FirestoreService {
       FirebaseFirestore.instance.collection('inventory');
 
   /// Adds a new food item to Firestore.
+  ///
+  /// OFFLINE-SAFE: the document ID is generated locally with doc() instead
+  /// of add(), and the write is NOT awaited. Awaiting a write blocks until
+  /// the SERVER acknowledges it, which never happens while offline — so the
+  /// caller (the add screen) would hang on its loading spinner even though
+  /// Firestore has already saved the item to its local cache and will sync
+  /// it on reconnect. Firing the write without awaiting lets the UI proceed
+  /// immediately; the item is persisted locally either way.
   Future<void> addFoodItem(FoodItem item) async {
-    // .add() generates the document ID; capture it so we can schedule a
-    // notification tied to this specific item.
-    final docRef = await _inventoryRef.add(item.toMap());
+    final docRef = _inventoryRef.doc(); // ID generated locally, instantly
     final savedItem = item.copyWith(id: docRef.id);
+
+    // Fire the write; do not await the server acknowledgement.
+    docRef.set(savedItem.toMap()).catchError((_) {
+      // A genuine write failure (e.g. permissions) is swallowed here so it
+      // never blocks the user; the local cache still reflects the change.
+    });
+
+    // Local OS scheduling — no network, safe to await.
     await NotificationService.scheduleForItem(savedItem);
   }
 
@@ -65,16 +79,25 @@ class FirestoreService {
   }
 
   /// Updates an existing food item by its document ID.
+  ///
+  /// OFFLINE-SAFE: like addFoodItem, the write is not awaited so the edit
+  /// screen doesn't hang offline. Notification re-scheduling is local and
+  /// is still awaited.
   Future<void> updateFoodItem(FoodItem item) async {
-    await _inventoryRef.doc(item.id).update(item.toMap());
+    _inventoryRef.doc(item.id).update(item.toMap()).catchError((_) {});
+
     // Reschedule in case the expiry date changed (or was removed).
     await NotificationService.cancelForItem(item.id);
     await NotificationService.scheduleForItem(item);
   }
 
   /// Deletes a food item by its document ID.
+  ///
+  /// OFFLINE-SAFE: the delete is not awaited so the item-detail screen
+  /// doesn't hang offline; Firestore removes it from the local cache
+  /// immediately and syncs the deletion on reconnect.
   Future<void> deleteFoodItem(String id) async {
-    await _inventoryRef.doc(id).delete();
+    _inventoryRef.doc(id).delete().catchError((_) {});
     await NotificationService.cancelForItem(id);
   }
 }
