@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../firebase_options.dart';
 import '../services/notification_service.dart';
 import 'home/main_screen.dart';
@@ -75,6 +76,17 @@ class _SplashScreenState extends State<SplashScreen>
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+
+      // Anonymous sign-in: gives this install a unique Firebase identity
+      // (UID) with no login screen, so each device's inventory can be
+      // scoped to its own user. If the user is already signed in (returning
+      // launch), Firebase reuses the cached credential — no network needed.
+      // Only a brand-new install's FIRST launch requires connectivity here;
+      // if that fails offline, we continue and retry on a later launch.
+      if (FirebaseAuth.instance.currentUser == null) {
+        await FirebaseAuth.instance.signInAnonymously();
+      }
+
       await NotificationService.init();
     } catch (_) {
       // If initialization fails (e.g. no network on first web load),

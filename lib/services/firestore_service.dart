@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
 import 'notification_service.dart';
@@ -7,8 +8,17 @@ import 'notification_service.dart';
 /// This is the ONLY file that should call Firestore directly —
 /// screens and providers should go through this service instead.
 class FirestoreService {
-  final CollectionReference _inventoryRef =
-      FirebaseFirestore.instance.collection('inventory');
+  /// Inventory is scoped per user: each anonymous device identity (UID)
+  /// gets its own subcollection under users/{uid}/inventory, so devices
+  /// don't share data. The UID comes from the anonymous sign-in performed
+  /// at startup (see splash_screen.dart).
+  CollectionReference get _inventoryRef {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('inventory');
+  }
 
   /// Adds a new food item to Firestore.
   ///
