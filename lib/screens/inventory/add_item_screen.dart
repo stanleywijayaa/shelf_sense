@@ -84,11 +84,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: now,
-      // Purchase date can be in the past; expiry date should be today or later
+      // Purchase date: from 2 years ago up to TODAY — an item cannot have
+      // been purchased in the future (a future date would also produce a
+      // negative days_since_purchase). Expiry date: from today up to 10
+      // years ahead.
       firstDate: isPurchaseDate
           ? DateTime(now.year - 2)
           : now,
-      lastDate: DateTime(now.year + 10),
+      lastDate: isPurchaseDate
+          ? now
+          : DateTime(now.year + 10),
       builder: (context, child) {
         // Tint the date picker to match ShelfSense green
         return Theme(
