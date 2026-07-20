@@ -64,11 +64,11 @@ _FEATURE_ORDER_NE = [
     "spoilage_sensitivity_cat",
 ]
 
-# Per-category lookup tables derived during preprocessing.
+# Category sensitivity values loaded from preprocessing output.
 with open(_p("category_stats.json")) as f:
     _category_stats = json.load(f)
 _SENSITIVITY = _category_stats["spoilage_sensitivity"]
-# Fallback for an unknown category: the median of known sensitivities.
+# Default sensitivity for unknown categories.
 _SENSITIVITY_DEFAULT = float(np.median(list(_SENSITIVITY.values())))
 
 
