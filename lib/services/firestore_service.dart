@@ -4,14 +4,9 @@ import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
 import 'notification_service.dart';
 
-/// Handles all direct communication with Firestore for the food inventory.
-/// This is the ONLY file that should call Firestore directly —
-/// screens and providers should go through this service instead.
+/// Handles Firestore access for the food inventory.
 class FirestoreService {
-  /// Inventory is scoped per user: each anonymous device identity (UID)
-  /// gets its own subcollection under users/{uid}/inventory, so devices
-  /// don't share data. The UID comes from the anonymous sign-in performed
-  /// at startup (see splash_screen.dart).
+  /// Inventory is per signed-in user at users/{uid}/inventory.
   CollectionReference get _inventoryRef {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return FirebaseFirestore.instance
@@ -20,47 +15,31 @@ class FirestoreService {
         .collection('inventory');
   }
 
-  /// Adds a new food item to Firestore.
-  ///
-  /// OFFLINE-SAFE: the document ID is generated locally with doc() instead
-  /// of add(), and the write is NOT awaited. Awaiting a write blocks until
-  /// the SERVER acknowledges it, which never happens while offline — so the
-  /// caller (the add screen) would hang on its loading spinner even though
-  /// Firestore has already saved the item to its local cache and will sync
-  /// it on reconnect. Firing the write without awaiting lets the UI proceed
-  /// immediately; the item is persisted locally either way.
+  /// Adds a new food item.
+  /// Uses a local doc ID and does not await the server write (offline-safe).
   Future<void> addFoodItem(FoodItem item) async {
-    final docRef = _inventoryRef.doc(); // ID generated locally, instantly
+    final docRef = _inventoryRef.doc(); // Generate ID locally.
     final savedItem = item.copyWith(id: docRef.id);
 
-    // Fire the write; do not await the server acknowledgement.
+    // Trigger write without waiting for server acknowledgment.
     docRef.set(savedItem.toMap()).catchError((_) {
-      // A genuine write failure (e.g. permissions) is swallowed here so it
-      // never blocks the user; the local cache still reflects the change.
+      // Ignore remote write failures to avoid blocking the UI.
     });
 
-    // Local OS scheduling — no network, safe to await.
+    // Notification scheduling is local, so it is awaited.
     await NotificationService.scheduleForItem(savedItem);
   }
 
-  /// Returns a real-time stream of all food items in the inventory.
-  ///
-  /// SORTING IS DONE CLIENT-SIDE, deliberately. A Firestore
-  /// `.orderBy('expiryDate')` would silently EXCLUDE documents whose
-  /// expiryDate is null — items without an expiry date would vanish from
-  /// the inventory entirely. Sorting in Dart keeps them, placed last.
-  ///
-  /// Risk is RECALCULATED locally on every read using the current date, so
-  /// the displayed risk stays current as items approach expiry without
-  /// calling the ML API per item. Items with no expiry date are estimated
-  /// from their category's typical shelf life adjusted for storage type,
-  /// so they age over time too rather than being frozen at the value the
-  /// no-expiry model produced on the day they were added.
+  /// Returns a real-time stream of food items.
+  /// Sorts in Dart so null expiry dates are kept (placed last).
+  /// Recalculates risk locally so values stay current over time.
   Stream<List<FoodItem>> getFoodItems() {
     return _inventoryRef.snapshots().map((snapshot) {
       final items = snapshot.docs.map((doc) {
-        final item =
-            FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+        final item = FoodItem.fromMap(
+          doc.id,
+          doc.data() as Map<String, dynamic>,
+        );
 
         final currentRisk = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
@@ -68,15 +47,13 @@ class FirestoreService {
           category: item.category,
           storageType: item.storageType,
         );
-        // Items WITH an expiry date use the date-based heuristic; items
-        // without one use the category/storage shelf-life estimate. Both
-        // age over time, so displayed risk stays current either way.
+        // Keep displayed risk updated based on current date.
         return currentRisk == null
             ? item
             : item.copyWith(riskLevel: currentRisk);
       }).toList();
 
-      // Soonest-to-expire first; items without an expiry date go last.
+      // Soonest expiry first; null expiry dates last.
       items.sort((a, b) {
         if (a.expiryDate == null && b.expiryDate == null) return 0;
         if (a.expiryDate == null) return 1;
@@ -88,24 +65,18 @@ class FirestoreService {
     });
   }
 
-  /// Updates an existing food item by its document ID.
-  ///
-  /// OFFLINE-SAFE: like addFoodItem, the write is not awaited so the edit
-  /// screen doesn't hang offline. Notification re-scheduling is local and
-  /// is still awaited.
+  /// Updates a food item by document ID.
+  /// Does not await the server write (offline-safe).
   Future<void> updateFoodItem(FoodItem item) async {
     _inventoryRef.doc(item.id).update(item.toMap()).catchError((_) {});
 
-    // Reschedule in case the expiry date changed (or was removed).
+    // Reschedule in case expiry details changed.
     await NotificationService.cancelForItem(item.id);
     await NotificationService.scheduleForItem(item);
   }
 
-  /// Deletes a food item by its document ID.
-  ///
-  /// OFFLINE-SAFE: the delete is not awaited so the item-detail screen
-  /// doesn't hang offline; Firestore removes it from the local cache
-  /// immediately and syncs the deletion on reconnect.
+  /// Deletes a food item by document ID.
+  /// Does not await the server delete (offline-safe).
   Future<void> deleteFoodItem(String id) async {
     _inventoryRef.doc(id).delete().catchError((_) {});
     await NotificationService.cancelForItem(id);

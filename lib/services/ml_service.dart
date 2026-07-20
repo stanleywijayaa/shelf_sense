@@ -4,17 +4,12 @@ import 'package:http/http.dart' as http;
 import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
 
-/// Talks to the ShelfSense FastAPI ML backend to get a real spoilage-risk
+/// Calls the ShelfSense ML backend for spoilage risk.
 class MlService {
   /// Base URL of the FastAPI server.
-  ///
-  /// IMPORTANT — this depends on where you run the app:
   ///  - Flutter web / Chrome:   http://localhost:8000
   ///  - Android emulator:       http://10.0.2.2:8000  (alias for the host PC)
   ///  - Real device : http://<your-PC-LAN-IP>:8000
-  ///        e.g. http://192.168.1.5:8000 — find it with `ipconfig` on Windows
-  ///        (the IPv4 address). Phone and PC must share the same Wi-Fi, and
-  ///        uvicorn must run with --host 0.0.0.0.
   static const String _baseUrl = "http://192.168.100.11:8000";
 
   /// How long to wait for the API before giving up and using the fallback.
@@ -22,7 +17,7 @@ class MlService {
 
   /// Returns "Low", "Medium", or "High" for the given item.
   static Future<String> predictRisk(FoodItem item) async {
-    // Derive the date features the API expects, from the item's dates.
+    // Build date fields expected by the API.
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
