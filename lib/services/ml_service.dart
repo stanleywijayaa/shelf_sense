@@ -14,7 +14,7 @@ class MlService {
   static const String _baseUrl = "http://192.168.100.11:8000";
 
   /// How long to wait for the API before giving up and using the fallback.
-  static const Duration _timeout = Duration(seconds: 5);
+  static const Duration _timeout = Duration(seconds: 3);
 
   /// Returns "Low", "Medium", or "High" for the given item.
   static Future<String> predictRisk(FoodItem item) async {
