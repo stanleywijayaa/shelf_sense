@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
@@ -39,6 +40,10 @@ class MlService {
       daysUntilExpiry = expiry.difference(today).inDays;
     }
 
+    debugPrint('[ML] predictRisk: ${item.name} | cat=${item.category} '
+        'storage=${item.storageType} daysSince=$daysSincePurchase '
+        'daysUntilExpiry=${daysUntilExpiry ?? "none"}');
+
     try {
       final response = await http
           .post(
@@ -48,9 +53,8 @@ class MlService {
               "category": item.category,
               "storage_type": item.storageType,
               // Keep value non-negative for API validation.
-              "days_since_purchase": daysSincePurchase < 0
-                  ? 0
-                  : daysSincePurchase,
+              "days_since_purchase":
+                  daysSincePurchase < 0 ? 0 : daysSincePurchase,
               // Null means use the no-expiry model.
               "days_until_expiry": daysUntilExpiry,
             }),
@@ -60,17 +64,25 @@ class MlService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final risk = data["risk_level"];
+        final modelUsed = data["model_used"];
         if (risk is String && risk.isNotEmpty) {
+          debugPrint('[ML] API responded: risk=$risk '
+              'model=${modelUsed ?? "?"} (HTTP 200)');
           return risk;
         }
       }
       // Unexpected response, use local estimate.
+      debugPrint('[ML] unexpected response (HTTP ${response.statusCode}) '
+          '-> using local fallback');
       return _fallback(item);
     } on SocketException {
       // Network/server unavailable.
+      debugPrint('[ML] SocketException (server unreachable) '
+          '-> using local fallback');
       return _fallback(item);
-    } catch (_) {
+    } catch (e) {
       // Any other error, use local estimate.
+      debugPrint('[ML] error ($e) -> using local fallback');
       return _fallback(item);
     }
   }
@@ -78,12 +90,15 @@ class MlService {
   /// Local estimate used when ML API is unavailable.
   /// Uses expiry data when present, otherwise category/storage defaults.
   static String _fallback(FoodItem item) {
-    return RiskUtils.calculateLocalRisk(
+    final result = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
           expiryDate: item.expiryDate,
           category: item.category,
           storageType: item.storageType,
         ) ??
         'Unknown';
+    debugPrint('[ML] local fallback result: $result '
+        '(${item.expiryDate != null ? "dated heuristic" : "undated estimate"})');
+    return result;
   }
 }

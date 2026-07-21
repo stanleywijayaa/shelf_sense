@@ -1,31 +1,27 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/food_item.dart';
 
-/// Handles local (on-device) notifications that alert the user before a food
-/// item expires. No server or internet needed — the device's OS fires these
-/// at the scheduled time, even if the app is closed.
-///
-/// Strategy: when an item is added/edited, schedule a notification for a set
-/// number of days BEFORE its expiry date. When an item is deleted, cancel it.
-///
-/// Note: local notifications work on real devices (Android/iOS). They do NOT
-/// work on Flutter web, so test this on the phone.
+/// Local on-device notifications for upcoming food expiry.
+/// Schedules reminders daysBeforeExpiry before expiry and cancels on delete.
+/// Works on Android/iOS (not supported on web).
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  /// How many days before expiry to fire the reminder.
+  /// Days before expiry to trigger the reminder.
   static const int daysBeforeExpiry = 2;
 
-  /// Call once at app startup (in main.dart) before scheduling anything.
+  /// Initialize the plugin; call once at app startup.
   static Future<void> init() async {
-    // Set up timezone data so scheduled times are correct.
+    // Initialize timezone data.
     tz_data.initializeTimeZones();
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings();
 
     const settings = InitializationSettings(
@@ -35,28 +31,35 @@ class NotificationService {
 
     await _plugin.initialize(settings);
 
-    // Android 13+ requires explicitly requesting notification permission.
+    // Request Android notification permission (Android 13+).
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
   }
 
-  /// Schedule a reminder for a single food item, a few days before it expires.
-  /// Uses a stable integer id derived from the item's Firestore id so we can
-  /// cancel/replace it later.
+  /// Schedule a reminder daysBeforeExpiry before an item's expiry.
+  /// Uses a stable int id derived from the item's Firestore id.
   static Future<void> scheduleForItem(FoodItem item) async {
-    // No expiry date -> nothing to schedule against. Local notifications
-    // are scheduled ahead of time against a fixed moment, and these items
-    // have none, so they are skipped. (Documented limitation.)
-    if (item.expiryDate == null) return;
+    // Skip items with no expiry date.
+    if (item.expiryDate == null) {
+      debugPrint('[NOTIF] skip "${item.name}": no expiry date');
+      return;
+    }
 
     final notifyDate = item.expiryDate!.subtract(
       const Duration(days: daysBeforeExpiry),
     );
 
-    // Don't schedule for a time already in the past.
-    if (notifyDate.isBefore(DateTime.now())) return;
+    // Skip notify dates that are in the past.
+    if (notifyDate.isBefore(DateTime.now())) {
+      debugPrint(
+        '[NOTIF] skip "${item.name}": notify date $notifyDate '
+        'is in the past',
+      );
+      return;
+    }
 
     final scheduledTime = tz.TZDateTime.from(notifyDate, tz.local);
 
@@ -80,24 +83,29 @@ class NotificationService {
       scheduledTime,
       details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      // uiLocalNotificationDateInterpretation is required on iOS.
+      // Required on iOS.
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
+
+    debugPrint(
+      '[NOTIF] scheduled "${item.name}" for $scheduledTime '
+      '(id=${_notificationId(item.id)})',
+    );
   }
 
-  /// Cancel the scheduled notification for an item (e.g. when it's deleted).
+  /// Cancel the scheduled notification for an item.
   static Future<void> cancelForItem(String itemId) async {
     await _plugin.cancel(_notificationId(itemId));
+    debugPrint('[NOTIF] cancelled id=${_notificationId(itemId)}');
   }
 
-  /// Cancel everything (useful if you ever need a clean slate).
+  /// Cancel all scheduled notifications.
   static Future<void> cancelAll() async {
     await _plugin.cancelAll();
   }
 
-  /// Turns a Firestore document id (a string) into a stable notification id
-  /// (an int), since the plugin identifies notifications by int.
+  /// Convert a Firestore document id to a stable positive int id.
   static int _notificationId(String itemId) {
     // hashCode can be negative; make it a positive 31-bit int.
     return itemId.hashCode & 0x7fffffff;

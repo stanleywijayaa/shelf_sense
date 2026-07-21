@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/food_item.dart';
 import '../core/utils/risk_utils.dart';
 import 'notification_service.dart';
@@ -18,12 +19,19 @@ class FirestoreService {
   /// Adds a new food item.
   /// Uses a local doc ID and does not await the server write (offline-safe).
   Future<void> addFoodItem(FoodItem item) async {
-    final docRef = _inventoryRef.doc(); // Generate ID locally.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final docRef = _inventoryRef.doc(); // ID generated locally, instantly
     final savedItem = item.copyWith(id: docRef.id);
 
+    debugPrint('[FIRESTORE] addFoodItem "${item.name}" '
+        'id=${docRef.id} under users/$uid/inventory');
+
     // Trigger write without waiting for server acknowledgment.
-    docRef.set(savedItem.toMap()).catchError((_) {
+    docRef.set(savedItem.toMap()).then((_) {
+      debugPrint('[FIRESTORE] add synced to server: ${docRef.id}');
+    }).catchError((e) {
       // Ignore remote write failures to avoid blocking the UI.
+      debugPrint('[FIRESTORE] add write error (queued locally): $e');
     });
 
     // Notification scheduling is local, so it is awaited.
@@ -36,10 +44,8 @@ class FirestoreService {
   Stream<List<FoodItem>> getFoodItems() {
     return _inventoryRef.snapshots().map((snapshot) {
       final items = snapshot.docs.map((doc) {
-        final item = FoodItem.fromMap(
-          doc.id,
-          doc.data() as Map<String, dynamic>,
-        );
+        final item =
+            FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>);
 
         final currentRisk = RiskUtils.calculateLocalRisk(
           purchaseDate: item.purchaseDate,
@@ -68,9 +74,12 @@ class FirestoreService {
   /// Updates a food item by document ID.
   /// Does not await the server write (offline-safe).
   Future<void> updateFoodItem(FoodItem item) async {
-    _inventoryRef.doc(item.id).update(item.toMap()).catchError((_) {});
+    debugPrint('[FIRESTORE] updateFoodItem "${item.name}" id=${item.id}');
+    _inventoryRef.doc(item.id).update(item.toMap()).catchError((e) {
+      debugPrint('[FIRESTORE] update write error (queued locally): $e');
+    });
 
-    // Reschedule in case expiry details changed.
+    // Reschedule in case the expiry date changed (or was removed).
     await NotificationService.cancelForItem(item.id);
     await NotificationService.scheduleForItem(item);
   }
@@ -78,7 +87,10 @@ class FirestoreService {
   /// Deletes a food item by document ID.
   /// Does not await the server delete (offline-safe).
   Future<void> deleteFoodItem(String id) async {
-    _inventoryRef.doc(id).delete().catchError((_) {});
+    debugPrint('[FIRESTORE] deleteFoodItem id=$id');
+    _inventoryRef.doc(id).delete().catchError((e) {
+      debugPrint('[FIRESTORE] delete write error (queued locally): $e');
+    });
     await NotificationService.cancelForItem(id);
   }
 }
