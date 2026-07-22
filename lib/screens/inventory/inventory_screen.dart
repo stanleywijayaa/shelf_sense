@@ -19,6 +19,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _selectedFilter = 'All';
   static const List<String> _filters = ['All', 'Fridge', 'Freezer', 'Pantry'];
 
+  // Ensures the ML risk refresh runs only once per screen mount.
+  bool _didAutoRefresh = false;
+
   Future<void> _confirmDelete(FoodItem item) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -75,6 +78,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
           final allItems = snapshot.data ?? [];
           final loading =
               snapshot.connectionState == ConnectionState.waiting;
+
+          // Refresh risk from the ML model once, when inventory first loads.
+          if (!loading && allItems.isNotEmpty && !_didAutoRefresh) {
+            _didAutoRefresh = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _firestoreService.refreshRisks(allItems);
+            });
+          }
+
           final attentionCount = allItems
               .where((i) => i.riskLevel == 'High' || i.riskLevel == 'Medium')
               .length;
@@ -169,26 +181,32 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     subtitle:
                                         'You have no items stored in the $_selectedFilter.',
                                   )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 8, 16, 80),
-                                    itemCount: items.length,
-                                    itemBuilder: (context, index) {
-                                      final item = items[index];
-                                      return FoodItemCard(
-                                        item: item,
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  ItemDetailScreen(item: item),
-                                            ),
-                                          );
-                                        },
-                                        onDelete: () => _confirmDelete(item),
-                                      );
-                                    },
+                                : RefreshIndicator(
+                                    color: const Color(0xFF3A7D44),
+                                    onRefresh: () => _firestoreService
+                                        .refreshRisks(allItems),
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          16, 8, 16, 80),
+                                      itemCount: items.length,
+                                      itemBuilder: (context, index) {
+                                        final item = items[index];
+                                        return FoodItemCard(
+                                          item: item,
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    ItemDetailScreen(
+                                                        item: item),
+                                              ),
+                                            );
+                                          },
+                                          onDelete: () => _confirmDelete(item),
+                                        );
+                                      },
+                                    ),
                                   ),
               ),
             ],

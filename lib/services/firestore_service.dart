@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/food_item.dart';
-import '../core/utils/risk_utils.dart';
+import 'ml_service.dart';
 import 'notification_service.dart';
 
 /// Handles Firestore access for the food inventory.
@@ -39,25 +39,16 @@ class FirestoreService {
   }
 
   /// Returns a real-time stream of food items.
-  /// Sorts in Dart so null expiry dates are kept (placed last).
-  /// Recalculates risk locally so values stay current over time.
+  /// Displays the stored risk — which is the ML prediction when the model was
+  /// last reachable, or the local heuristic only if it was offline at that
+  /// time. Freshness is handled separately by [refreshRisks], which re-queries
+  /// the model. Sorts in Dart so null expiry dates are kept (placed last).
   Stream<List<FoodItem>> getFoodItems() {
     return _inventoryRef.snapshots().map((snapshot) {
-      final items = snapshot.docs.map((doc) {
-        final item =
-            FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>);
-
-        final currentRisk = RiskUtils.calculateLocalRisk(
-          purchaseDate: item.purchaseDate,
-          expiryDate: item.expiryDate,
-          category: item.category,
-          storageType: item.storageType,
-        );
-        // Keep displayed risk updated based on current date.
-        return currentRisk == null
-            ? item
-            : item.copyWith(riskLevel: currentRisk);
-      }).toList();
+      final items = snapshot.docs
+          .map((doc) =>
+              FoodItem.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+          .toList();
 
       // Soonest expiry first; null expiry dates last.
       items.sort((a, b) {
@@ -69,6 +60,42 @@ class FirestoreService {
 
       return items;
     });
+  }
+
+  /// Re-queries the ML model for the given items and writes back any risk
+  /// levels that changed. This keeps the displayed risk current as days pass,
+  /// using the model rather than the offline heuristic. MlService.predictRisk
+  /// already falls back to the local heuristic only when the API is
+  /// unreachable, so calling this offline is safe.
+  ///
+  /// Only changed items are written, so repeated calls settle quickly and do
+  /// not churn Firestore. Writes riskLevel directly and does NOT touch
+  /// notifications, since a risk change does not change the expiry date.
+  Future<void> refreshRisks(List<FoodItem> items) async {
+    if (items.isEmpty) return;
+
+    final results = await Future.wait(items.map((item) async {
+      final newRisk = await MlService.predictRisk(item);
+      return MapEntry(item, newRisk);
+    }));
+
+    final batch = FirebaseFirestore.instance.batch();
+    var changes = 0;
+    for (final entry in results) {
+      final item = entry.key;
+      final newRisk = entry.value;
+      if (newRisk != item.riskLevel && newRisk != 'Unknown') {
+        batch.update(_inventoryRef.doc(item.id), {'riskLevel': newRisk});
+        changes++;
+      }
+    }
+
+    if (changes > 0) {
+      debugPrint('[FIRESTORE] refreshRisks: updated $changes item(s)');
+      await batch.commit();
+    } else {
+      debugPrint('[FIRESTORE] refreshRisks: no changes');
+    }
   }
 
   /// Updates a food item by document ID.
