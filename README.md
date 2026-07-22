@@ -4,8 +4,6 @@
 
 ShelfSense is a mobile application that classifies each food item's spoilage risk (Low / Medium / High) using a machine-learning model, then helps the user prioritise what to consume first through a risk dashboard, recipe suggestions, and expiry notifications. It supports UN Sustainable Development Goal 12 (Responsible Consumption and Production).
 
----
-
 ## Architecture
 
 ShelfSense has three parts that work together:
