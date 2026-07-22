@@ -116,10 +116,15 @@ class _RecipeScreenState extends State<RecipeScreen> {
               // Search sits OUTSIDE the rebuilt results area so the
               // TextField is never recreated when results change —
               // this is what preserves focus while typing.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                child: _searchField(),
-              ),
+              //
+              // Only shown when there are at-risk suggestions to search;
+              // with nothing at risk there is nothing to filter, so the
+              // field is hidden rather than left visible but non-functional.
+              if (!loading && suggested.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  child: _searchField(),
+                ),
 
               Expanded(
                 child: loading
